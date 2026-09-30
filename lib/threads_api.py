@@ -187,3 +187,81 @@ def refresh_token(handle):
         _cache.pop(handle, None)
         return {"ok": True, "expires_in": res.get("expires_in")}
     return {"error": str(res)[:150]}
+
+
+def _save_token(handle, token):
+    d = _tokens()
+    d[handle] = token
+    TOKENS.parent.mkdir(parents=True, exist_ok=True)
+    TOKENS.write_text(json.dumps(d, indent=2))
+    TOKENS.chmod(0o600)
+    _cache.pop(handle, None)
+
+
+def _app_secret():
+    """Baca app_secret dari app.json bot lama (buat exchange long-lived)."""
+    appf = TOKENS.parent / "app.json"
+    if appf.exists():
+        try:
+            d = json.loads(appf.read_text())
+            s = d.get("app_secret", "")
+            if s and not str(s).startswith("ISI_"):
+                return s
+        except Exception:
+            pass
+    return None
+
+
+def exchange_long_lived(token):
+    """Tuker short-lived token jadi long-lived (60 hari). Butuh app_secret."""
+    secret = _app_secret()
+    if not secret:
+        return {"error": "app_secret gak ada di app.json, gak bisa exchange"}
+    url = (f"{GRAPH}/access_token?grant_type=th_exchange_token"
+           f"&client_secret={urllib.parse.quote(secret)}"
+           f"&access_token={urllib.parse.quote(token)}")
+    try:
+        return _http(url)
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode()[:200]}"}
+
+
+def add_account(token, exchange=True):
+    """Validasi token ke Meta, ambil username, (opsional exchange long-lived),
+    simpan ke tokens.json. Return {ok, handle, username, ...} atau {error}."""
+    token = (token or "").strip()
+    if not token:
+        return {"error": "token kosong"}
+    # exchange dulu kalau diminta (token pendek -> panjang 60 hari)
+    exchanged = False
+    if exchange:
+        ex = exchange_long_lived(token)
+        if ex.get("access_token"):
+            token = ex["access_token"]
+            exchanged = True
+        # kalau exchange gagal (mis. token udah long-lived), lanjut pakai token asli
+    # validasi: ambil profil dari Meta
+    url = (f"{GRAPH}/v1.0/me?fields=id,username"
+           f"&access_token={urllib.parse.quote(token)}")
+    try:
+        me = _http(url)
+    except urllib.error.HTTPError as e:
+        return {"error": f"token invalid: HTTP {e.code}: {e.read().decode()[:180]}"}
+    username = me.get("username")
+    uid = me.get("id")
+    if not username:
+        return {"error": f"gak dapet username dari token: {str(me)[:150]}"}
+    _save_token(username, token)
+    return {"ok": True, "handle": username, "username": username,
+            "user_id": uid, "exchanged": exchanged}
+
+
+def remove_account(handle):
+    d = _tokens()
+    if handle in d:
+        del d[handle]
+        TOKENS.write_text(json.dumps(d, indent=2))
+        TOKENS.chmod(0o600)
+        _cache.pop(handle, None)
+        return {"ok": True}
+    return {"error": "akun gak ketemu"}

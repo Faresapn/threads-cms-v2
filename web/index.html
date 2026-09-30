@@ -111,6 +111,7 @@
     <button data-tab="persona">Persona AI</button>
     <button data-tab="autopost">Auto-Post</button>
     <button data-tab="insight">Insight</button>
+    <button data-tab="akun">Akun</button>
   </div>
 
   <!-- ===== COMPOSE TAB ===== -->
@@ -293,6 +294,40 @@
     <div id="insight-list" style="margin-top:16px"><div class="empty">pilih akun lalu klik Muat Post</div></div>
   </div>
   </div>
+
+  <!-- ===== AKUN TAB ===== -->
+  <div class="tab-page" id="tab-akun">
+  <div class="grid">
+    <div class="card">
+      <h2>Tambah Akun Threads</h2>
+      <label>Access Token dari Meta</label>
+      <textarea id="acc-token" class="sm" placeholder="Paste token dari Meta (Graph API Explorer / OAuth)"></textarea>
+      <label class="row" style="margin-top:10px"><input type="checkbox" id="acc-exchange" checked style="width:auto; margin-right:7px"> Exchange ke long-lived (awet 60 hari) — rekomendasi</label>
+      <div class="hint">Username diambil otomatis dari token. Token divalidasi ke Meta dulu sebelum disimpan.</div>
+      <div class="row" style="margin-top:14px">
+        <button id="acc-add">Validasi &amp; Tambah</button>
+      </div>
+      <div class="hint" id="acc-status" style="margin-top:12px"></div>
+
+      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border)">
+        <div class="hint" style="line-height:1.7">
+          <b>Cara dapet token dari Meta:</b><br>
+          1. Buka <b>developers.facebook.com</b> → app Threads kamu<br>
+          2. Tools → <b>Graph API Explorer</b> (atau flow OAuth)<br>
+          3. Pilih akun Threads, generate token dgn scope:<br>
+          &nbsp;&nbsp;<code style="font-size:11px">threads_basic, threads_content_publish, threads_manage_replies, threads_manage_insights</code><br>
+          4. Copy token, paste di atas<br>
+          <span style="color:var(--gold)">Token pendek (1 jam) otomatis di-exchange jadi 60 hari.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Akun Terhubung</h2>
+      <div id="akun-list"><div class="empty">memuat...</div></div>
+    </div>
+  </div>
+  </div>
 </div>
 <div id="toast"></div>
 
@@ -321,6 +356,7 @@ document.querySelectorAll(".tabs button").forEach(b=>{
     $("#tab-"+b.dataset.tab).classList.add("on");
     if (b.dataset.tab==="persona") loadPersonas();
     if (b.dataset.tab==="autopost") loadAutopost();
+    if (b.dataset.tab==="akun") loadAkun();
   });
 });
 
@@ -660,6 +696,44 @@ window.loadIns = async (handle, pid) => {
     box.innerHTML = `<div class="ins">` + ["views","likes","replies","reposts","quotes"].map(k=>
       `<div class="box"><div class="n">${m[k]??0}</div><div class="l">${k}</div></div>`).join("") + `</div>`;
   } catch(e){ box.innerHTML=`<div class="hint" style="color:var(--err)">${e.message}</div>`; }
+};
+
+// ── AKUN ──
+async function loadAkun() {
+  try {
+    const accs = await api("/api/accounts");
+    const el = $("#akun-list");
+    if (!accs.length){ el.innerHTML='<div class="empty">belum ada akun</div>'; return; }
+    el.innerHTML = accs.map(a=>`<div class="persona-item">
+      <div class="row" style="justify-content:space-between">
+        <span class="pn">@${esc(a.handle)}</span>
+        <button class="sm danger" onclick="delAkun('${esc(a.handle)}')">Hapus</button>
+      </div>
+      <div class="pd">${a.user_id?'id: '+esc(a.user_id):'terhubung'}</div>
+    </div>`).join("");
+  } catch(e){ $("#akun-list").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
+}
+$("#acc-add").addEventListener("click", async ()=>{
+  const token = $("#acc-token").value.trim();
+  if (!token) return toast("paste token dulu","err");
+  const btn = $("#acc-add"); const old=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> validasi...';
+  $("#acc-status").textContent="validasi token ke Meta...";
+  try {
+    const j = await api("/api/account/add", { method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({ token, exchange:$("#acc-exchange").checked }) });
+    $("#acc-status").innerHTML = `✅ akun <b>@${esc(j.handle)}</b> ditambah${j.exchanged?' (long-lived 60 hari)':''}`;
+    $("#acc-token").value=""; toast("akun ditambah ✓","ok");
+    await loadAccounts(); loadAkun();  // refresh semua dropdown
+  } catch(e){ $("#acc-status").innerHTML=`⚠ ${esc(e.message)}`; toast("gagal: "+e.message,"err"); }
+  finally { btn.disabled=false; btn.innerHTML=old; }
+});
+window.delAkun = async handle => {
+  if (!confirm(`Hapus akun @${handle}? Token dihapus dari sistem.`)) return;
+  try {
+    await api("/api/account/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({handle}) });
+    toast("akun dihapus","ok"); await loadAccounts(); loadAkun();
+  } catch(e){ toast("gagal: "+e.message,"err"); }
 };
 
 // ── init ──

@@ -321,6 +321,18 @@ class H(BaseHTTPRequestHandler):
                     lang=body.get("lang") or cfg.get("lang", "id"),
                     num_parts=int(body.get("num_parts", 2)), persona=persona)
                 return self._json({"ok": True, "niche": niche, "text": text})
+            # ── akun ──
+            if path == "/api/account/add":
+                res = threads_api.add_account(
+                    body.get("token", ""),
+                    exchange=bool(body.get("exchange", True)))
+                if res.get("ok"):
+                    db.upsert_account(res["handle"], display_name=res["handle"],
+                                      user_id=res.get("user_id"))
+                return self._json(res, 200 if res.get("ok") else 400)
+            if path == "/api/account/delete":
+                res = threads_api.remove_account(body.get("handle", ""))
+                return self._json(res, 200 if res.get("ok") else 400)
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)
