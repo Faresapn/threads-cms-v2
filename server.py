@@ -29,6 +29,8 @@ from lib import db, r2, threads_api, ai  # noqa: E402
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
 PORT = 8455
+OAUTH_PORT = 8456           # HTTPS khusus OAuth callback
+REDIRECT_URI = f"https://localhost:{OAUTH_PORT}/callback"
 _lock = threading.RLock()
 
 
@@ -191,6 +193,17 @@ class H(BaseHTTPRequestHandler):
                 return self._json(p or {"error": "not found"}, 200 if p else 404)
             if path == "/api/autopost":
                 return self._json(db.get_autopost(q.get("handle", [""])[0]))
+            # ── OAuth (HTTP redirect, bukan JSON) ──
+            if path == "/oauth/start":
+                url, state = threads_api.oauth_authorize_url(REDIRECT_URI)
+                if not url:
+                    return self._json({"error": state}, 400)
+                self.send_response(302)
+                self.send_header("Location", url)
+                self.end_headers()
+                return
+            if path == "/callback":
+                return self._oauth_callback(q)
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)
@@ -377,6 +390,42 @@ class H(BaseHTTPRequestHandler):
         return self._json({"ok": True, "r2_key": key, "public_url": url,
                            "filename": fname, "size": len(data)})
 
+    def _oauth_callback(self, q):
+        """Handle redirect balik dari Meta: tuker code -> token -> simpan."""
+        def _page(icon, msg, detail=""):
+            html = f"""<!doctype html><html><head><meta charset=utf-8>
+<title>Threads CMS</title><style>
+body{{font-family:-apple-system,sans-serif;background:#0a0a0b;color:#e8e8ea;
+display:flex;align-items:center;justify-content:center;height:100vh;margin:0}}
+.box{{text-align:center;max-width:420px;padding:30px}}
+.icon{{font-size:52px;margin-bottom:14px}}
+h1{{font-size:20px;margin:0 0 8px}}p{{color:#8a8a93;font-size:14px}}
+a{{color:#5b8cff}}</style></head><body><div class=box>
+<div class=icon>{icon}</div><h1>{msg}</h1><p>{detail}</p>
+<p><a href="http://localhost:8455/">← balik ke dashboard</a></p>
+<script>setTimeout(()=>{{window.close()}},2500)</script>
+</div></body></html>"""
+            data = html.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        if "error" in q:
+            return _page("❌", "Ditolak",
+                         q.get("error_description", q.get("error", ["?"]))[0])
+        code = (q.get("code") or [""])[0].split("#_")[0].strip()
+        if not code:
+            return _page("⚠️", "Gak ada code di callback")
+        res = threads_api.oauth_exchange_code(code, REDIRECT_URI)
+        if res.get("ok"):
+            db.upsert_account(res["handle"], display_name=res["handle"],
+                              user_id=res.get("user_id"))
+            return _page("✅", f"@{res['handle']} terhubung!",
+                         "Token long-lived tersimpan. Tab ini bakal nutup sendiri.")
+        return _page("❌", "Gagal connect", res.get("error", "?")[:200])
+
     def _static(self, name):
         f = WEB / name
         if not f.exists():
@@ -389,9 +438,30 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
+def _start_oauth_https():
+    """Listener HTTPS terpisah buat OAuth callback (Meta wajib HTTPS).
+    Reuse handler H yang sama; cuma beda port + TLS."""
+    import ssl
+    cert = BASE / "tls-cert.pem"
+    key = BASE / "tls-key.pem"
+    if not (cert.exists() and key.exists()):
+        print("[oauth] cert TLS gak ada, OAuth HTTPS nonaktif", flush=True)
+        return
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=str(cert), keyfile=str(key))
+        httpsd = ThreadingHTTPServer(("127.0.0.1", OAUTH_PORT), H)
+        httpsd.socket = ctx.wrap_socket(httpsd.socket, server_side=True)
+        print(f"[oauth] https://localhost:{OAUTH_PORT} (callback)", flush=True)
+        httpsd.serve_forever()
+    except Exception as e:
+        print(f"[oauth] gagal start HTTPS: {e}", flush=True)
+
+
 def main():
     db.init_db()
     threading.Thread(target=scheduler_loop, daemon=True).start()
+    threading.Thread(target=_start_oauth_https, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", PORT), H)
     print(f"[cms] http://127.0.0.1:{PORT}", flush=True)
     srv.serve_forever()

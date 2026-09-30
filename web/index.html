@@ -300,6 +300,15 @@
   <div class="grid">
     <div class="card">
       <h2>Tambah Akun Threads</h2>
+
+      <div style="background:var(--surface2); border:1px solid var(--accent); border-radius:12px; padding:14px; margin-bottom:16px;">
+        <strong style="font-size:13px; color:var(--accent)">⚡ Cara Termudah — Connect via Login</strong>
+        <div class="hint" style="margin:6px 0 10px">Klik tombol, login akun target di popup Meta, token otomatis masuk. Nggak perlu copy-paste.</div>
+        <button id="acc-oauth">🔗 Connect Akun Baru</button>
+        <div class="hint" id="oauth-status" style="margin-top:8px"></div>
+      </div>
+
+      <div style="text-align:center; color:var(--muted); font-size:12px; margin:10px 0">— atau paste token manual —</div>
       <label>Access Token dari Meta</label>
       <textarea id="acc-token" class="sm" placeholder="Paste token dari Meta (Graph API Explorer / OAuth)"></textarea>
       <label class="row" style="margin-top:10px"><input type="checkbox" id="acc-exchange" checked style="width:auto; margin-right:7px"> Exchange ke long-lived (awet 60 hari) — rekomendasi</label>
@@ -713,6 +722,31 @@ async function loadAkun() {
     </div>`).join("");
   } catch(e){ $("#akun-list").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
 }
+// ── OAuth connect (cara termudah) ──
+const OAUTH_HTTPS = "https://localhost:8456";
+$("#acc-oauth").addEventListener("click", ()=>{
+  $("#oauth-status").innerHTML = 'buka popup login Meta... (kalau warning sertifikat, klik "lanjut/proceed" — itu localhost kamu sendiri)';
+  const before = accounts.map(a=>a.handle);
+  const w = window.open(OAUTH_HTTPS + "/oauth/start", "oauth", "width=600,height=720");
+  // poll: deteksi akun baru masuk
+  let tries = 0;
+  const iv = setInterval(async ()=>{
+    tries++;
+    try {
+      const accs = await api("/api/accounts");
+      const added = accs.map(a=>a.handle).filter(h=>!before.includes(h));
+      if (added.length){
+        clearInterval(iv);
+        $("#oauth-status").innerHTML = `✅ akun <b>@${esc(added[0])}</b> terhubung!`;
+        toast("akun connected ✓","ok");
+        accounts = accs; fillAccountSelects(); loadAkun();
+        try{ w && w.close(); }catch(e){}
+      }
+    } catch(e){}
+    if (tries > 150){ clearInterval(iv); }  // stop after ~5 min
+  }, 2000);
+});
+
 $("#acc-add").addEventListener("click", async ()=>{
   const token = $("#acc-token").value.trim();
   if (!token) return toast("paste token dulu","err");

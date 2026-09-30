@@ -265,3 +265,86 @@ def remove_account(handle):
         _cache.pop(handle, None)
         return {"ok": True}
     return {"error": "akun gak ketemu"}
+
+
+# ── OAuth flow (connect akun via login Meta) ─────────────────────────────
+import secrets as _secrets
+
+_BASE = TOKENS.parent  # ~/.threads-bot (share app.json + tokens)
+_oauth_states = set()
+
+
+def _app_config():
+    """Baca app.json (app_id, app_secret, redirect_uri, scope). Cari di CMS dir dulu,
+    fallback ke ~/.threads-bot."""
+    from pathlib import Path as _P
+    for base in [_P(__file__).resolve().parent.parent, _BASE]:
+        f = base / "app.json"
+        if f.exists():
+            try:
+                return json.loads(f.read_text())
+            except Exception:
+                pass
+    return {}
+
+
+def oauth_authorize_url(redirect_uri):
+    """Build URL Meta authorize. Return (url, state) atau (None, error)."""
+    cfg = _app_config()
+    app_id = cfg.get("app_id")
+    scope = cfg.get("scope", "threads_basic,threads_content_publish,"
+                             "threads_manage_replies,threads_manage_insights")
+    if not app_id:
+        return None, "app_id gak ada di app.json"
+    state = _secrets.token_urlsafe(16)
+    _oauth_states.add(state)
+    params = {
+        "client_id": app_id,
+        "redirect_uri": redirect_uri,
+        "scope": scope,
+        "response_type": "code",
+        "state": state,
+    }
+    return "https://threads.net/oauth/authorize?" + urllib.parse.urlencode(params), state
+
+
+def oauth_exchange_code(code, redirect_uri):
+    """Tuker authorization code -> short token -> long-lived, validasi, simpan.
+    Return {ok, handle, ...} atau {error}."""
+    cfg = _app_config()
+    app_id = cfg.get("app_id")
+    secret = cfg.get("app_secret")
+    if not (app_id and secret):
+        return {"error": "app_id/app_secret gak lengkap"}
+    # step 1: code -> short-lived token
+    data = urllib.parse.urlencode({
+        "client_id": app_id,
+        "client_secret": secret,
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri,
+        "code": code,
+    }).encode()
+    try:
+        tok = _http(f"{GRAPH}/oauth/access_token", data=data, method="POST")
+    except urllib.error.HTTPError as e:
+        return {"error": f"tuker code gagal: {e.read().decode()[:180]}"}
+    short = tok.get("access_token")
+    if not short:
+        return {"error": f"gak dapet token: {str(tok)[:150]}"}
+    # step 2: short -> long-lived
+    long_token = short
+    ex = exchange_long_lived(short)
+    if ex.get("access_token"):
+        long_token = ex["access_token"]
+    # step 3: validasi + ambil username, simpan
+    try:
+        me = _http(f"{GRAPH}/v1.0/me?fields=id,username"
+                   f"&access_token={urllib.parse.quote(long_token)}")
+    except urllib.error.HTTPError as e:
+        return {"error": f"validasi gagal: {e.read().decode()[:150]}"}
+    username = me.get("username")
+    if not username:
+        return {"error": f"gak dapet username: {str(me)[:120]}"}
+    _save_token(username, long_token)
+    return {"ok": True, "handle": username, "user_id": me.get("id"),
+            "exchanged": long_token != short}

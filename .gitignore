@@ -8,3 +8,6 @@ __pycache__/
 tls-*.pem
 .env.local
 cms.log
+app.json
+tls-key.pem
+tls-cert.pem
