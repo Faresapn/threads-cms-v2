@@ -129,17 +129,29 @@
         <select id="gen-persona"><option value="">— tanpa persona —</option></select>
         <label>Topik / ide</label>
         <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
+        <label>Arahan tambahan (mau seperti apa) — opsional</label>
+        <textarea id="gen-brief" class="sm" placeholder="mis: tone lebih personal, ceritain pengalaman, jangan terlalu formal"></textarea>
         <div class="row" style="margin-top:10px">
           <label style="margin:0">Jumlah part</label>
           <input type="number" id="gen-parts" value="1" min="1" max="6" style="width:70px">
           <button class="ai" id="btn-gen">Generate</button>
         </div>
-        <div class="hint">Hasil masuk ke kotak teks di bawah, bisa diedit dulu.</div>
+        <div class="hint">Kalau isi <b>link produk</b> di bawah, AI bikin soft-sell + auto-reply link. Kalau kosong, murni storytelling tanpa jualan.</div>
       </div>
 
       <label>Teks (pisah part chain pakai <code>---</code> di baris sendiri)</label>
       <textarea id="text" placeholder="Tulis thread di sini...&#10;&#10;---&#10;&#10;Part kedua (auto jadi reply)"></textarea>
       <div class="hint" id="charc">0 karakter · 1 part</div>
+
+      <!-- SOFT-SELL LINK -->
+      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:14px;">
+        <strong style="font-size:12px; color:var(--gold)">🔗 Soft-sell (opsional)</strong>
+        <label>Link produk (kosongkan = storytelling biasa, tanpa reply jualan)</label>
+        <input type="text" id="ss-link" placeholder="https://promptedsite.com/...">
+        <label>Teks reply sebelum link — opsional</label>
+        <input type="text" id="ss-text" placeholder="mis: cek koleksi lengkapnya di sini 👇">
+        <div class="hint">Kalau link diisi: abis thread kepost, bot auto-reply link ini di komen.</div>
+      </div>
 
       <label>Gambar (drag &amp; drop / klik) — gambar ke-N nempel di part ke-N</label>
       <div class="drop" id="drop">Seret foto ke sini atau klik buat pilih<br><span style="font-size:11px">upload otomatis ke R2</span></div>
@@ -275,6 +287,9 @@ $("#btn-gen").addEventListener("click", async ()=>{
     const pid = $("#gen-persona").value;
     if (pid) payload.persona_id = parseInt(pid);
     else payload.lang = "id";
+    payload.has_link = !!$("#ss-link").value.trim();
+    const brief = $("#gen-brief").value.trim();
+    if (brief) payload.brief = brief;
     const j = await api("/api/generate", { method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
     $("#text").value = j.text; updateCount();
@@ -328,6 +343,8 @@ $("#btn-save").addEventListener("click", async ()=>{
   try {
     const payload = { handle, text };
     if (schedRaw) payload.scheduled_at = schedRaw;
+    const ssLink = $("#ss-link").value.trim();
+    if (ssLink) { payload.softsell_link = ssLink; payload.softsell_text = $("#ss-text").value.trim(); }
     const j = await api("/api/post", { method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
     for (let i=0;i<uploads.length;i++){
@@ -342,7 +359,7 @@ $("#btn-save").addEventListener("click", async ()=>{
   finally { btn.disabled = false; }
 });
 $("#btn-clear").addEventListener("click", clearForm);
-function clearForm() { $("#text").value=""; $("#sched").value=""; $("#gen-topic").value=""; uploads=[]; renderThumbs(); updateCount(); }
+function clearForm() { $("#text").value=""; $("#sched").value=""; $("#gen-topic").value=""; $("#gen-brief").value=""; $("#ss-link").value=""; $("#ss-text").value=""; uploads=[]; renderThumbs(); updateCount(); }
 
 // ── list queue ──
 $("#filters").addEventListener("click", e=>{
@@ -367,6 +384,7 @@ function renderPost(p) {
       <span class="handle">@${p.handle}</span><span class="st ${p.status}">${p.status}</span></div>
     <div class="txt">${esc(p.text)}</div>
     ${imgs?`<div class="mini-img">${imgs}</div>`:""}
+    ${p.softsell_link?`<div class="meta" style="color:var(--gold)">🔗 soft-sell: ${esc(p.softsell_link)}</div>`:""}
     <div class="meta">${when?`⏰ ${when}`:""} ${posted?`✅ ${posted}`:""}${p.error?`<br>⚠ ${esc(p.error)}`:""}</div>
     <div class="actions">
       ${p.status!=="posted"?`<button class="sm" onclick="pub('${p.id}')">Post sekarang</button>`:""}

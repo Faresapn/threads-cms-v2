@@ -32,6 +32,32 @@ PORT = 8455
 _lock = threading.RLock()
 
 
+# ── soft-sell auto-reply ────────────────────────────────────────────────────
+def _softsell_reply(post, results):
+    """Kalau post punya softsell_link, reply link ke thread sendiri.
+    Kalau gak ada link, skip total (murni storytelling)."""
+    link = (post.get("softsell_link") or "").strip()
+    if not link:
+        return None  # gak ada link = gak ada reply, storytelling doang
+    # cari root post id (post pertama di chain)
+    root_id = None
+    for r in (results or []):
+        if r.get("post_id"):
+            root_id = r["post_id"]
+            break
+    if not root_id:
+        return {"error": "gak nemu root post id buat reply"}
+    txt = (post.get("softsell_text") or "").strip()
+    reply_text = f"{txt}\n\n{link}" if txt else link
+    try:
+        res = threads_api.reply_to(post["handle"], root_id, reply_text)
+        print(f"[softsell] reply link ke {root_id}: {res.get('reply_id')}", flush=True)
+        return {"ok": True, **res}
+    except Exception as e:
+        print(f"[softsell] gagal reply: {e}", flush=True)
+        return {"error": str(e)[:200]}
+
+
 # ── scheduler ─────────────────────────────────────────────────────────────
 def scheduler_loop():
     print("[scheduler] mulai (cek tiap 30s)", flush=True)
@@ -49,6 +75,9 @@ def scheduler_loop():
                         db.set_result(pid, "posted", results=res,
                                       posted_at=db.now_iso())
                         print(f"[scheduler] OK {pid}", flush=True)
+                        ss = _softsell_reply(post, res)
+                        if ss:
+                            db.set_softsell_result(pid, ss)
                     except Exception as e:
                         db.set_result(pid, "failed", error=str(e)[:250])
                         print(f"[scheduler] FAIL {pid}: {e}", flush=True)
@@ -119,7 +148,9 @@ class H(BaseHTTPRequestHandler):
             body = self._body()
             if path == "/api/post":
                 pid = db.new_post(body["handle"], body["text"],
-                                  body.get("scheduled_at"))
+                                  body.get("scheduled_at"),
+                                  softsell_link=body.get("softsell_link"),
+                                  softsell_text=body.get("softsell_text"))
                 return self._json({"id": pid, "ok": True})
             if path == "/api/post/update":
                 pid = body["id"]
@@ -196,7 +227,9 @@ class H(BaseHTTPRequestHandler):
                     }
                 text = ai.generate(body["topic"], persona,
                                    num_parts=int(body.get("num_parts", 1)),
-                                   lang=body.get("lang"))
+                                   lang=body.get("lang"),
+                                   has_link=bool(body.get("has_link")),
+                                   extra_brief=body.get("brief"))
                 return self._json({"ok": True, "text": text})
             return self._json({"error": "not found"}, 404)
         except Exception as e:
@@ -213,7 +246,10 @@ class H(BaseHTTPRequestHandler):
             try:
                 res = threads_api.post_thread(post["handle"], post["text"], urls)
                 db.set_result(pid, "posted", results=res, posted_at=db.now_iso())
-                return self._json({"ok": True, "results": res})
+                ss = _softsell_reply(post, res)
+                if ss:
+                    db.set_softsell_result(pid, ss)
+                return self._json({"ok": True, "results": res, "softsell": ss})
             except Exception as e:
                 db.set_result(pid, "failed", error=str(e)[:250])
                 return self._json({"error": str(e)}, 500)

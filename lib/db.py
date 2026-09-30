@@ -27,6 +27,14 @@ def init_db():
     v2 = BASE / "db" / "schema_v2.sql"
     if v2.exists():
         con.executescript(v2.read_text())
+    # migrasi kolom soft-sell (idempotent)
+    cols = {r["name"] for r in con.execute("PRAGMA table_info(posts)").fetchall()}
+    if "softsell_link" not in cols:
+        con.execute("ALTER TABLE posts ADD COLUMN softsell_link TEXT")
+    if "softsell_text" not in cols:
+        con.execute("ALTER TABLE posts ADD COLUMN softsell_text TEXT")
+    if "softsell_result" not in cols:
+        con.execute("ALTER TABLE posts ADD COLUMN softsell_result TEXT")
     con.commit()
     con.close()
 
@@ -53,7 +61,7 @@ def list_accounts():
 
 
 # ── posts ───────────────────────────────────────────────────────────────
-def new_post(handle, text, scheduled_at=None):
+def new_post(handle, text, scheduled_at=None, softsell_link=None, softsell_text=None):
     pid = "q_" + uuid.uuid4().hex[:8]
     status = "draft"
     sched = None
@@ -65,9 +73,10 @@ def new_post(handle, text, scheduled_at=None):
         status = "scheduled"
     con = connect()
     con.execute(
-        """INSERT INTO posts(id,handle,text,status,scheduled_at,created_at)
-           VALUES(?,?,?,?,?,?)""",
-        (pid, handle, text, status, sched, now_iso()),
+        """INSERT INTO posts(id,handle,text,status,scheduled_at,created_at,softsell_link,softsell_text)
+           VALUES(?,?,?,?,?,?,?,?)""",
+        (pid, handle, text, status, sched, now_iso(),
+         softsell_link or None, softsell_text or None),
     )
     con.commit(); con.close()
     return pid
@@ -127,6 +136,10 @@ def set_result(pid, status, results=None, error=None, posted_at=None):
         error=error,
         posted_at=posted_at,
     )
+
+
+def set_softsell_result(pid, result):
+    update_post(pid, softsell_result=json.dumps(result, ensure_ascii=False))
 
 
 def delete_post(pid):

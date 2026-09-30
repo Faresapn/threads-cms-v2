@@ -123,9 +123,12 @@ def learn_style(texts, lang="id"):
 
 
 # ── generate thread ────────────────────────────────────────────────────────
-def generate(topic, persona, num_parts=1, lang=None):
+def generate(topic, persona, num_parts=1, lang=None, has_link=False, extra_brief=None):
     """Generate thread dari topik, niru gaya persona.
     persona: dict {name, system_prompt, learned_style, sample_posts, lang}
+    has_link: True kalau ada link produk (boleh soft-sell CTA di thread, TAPI link
+              tetap di reply). False = murni storytelling, JANGAN nawarin produk.
+    extra_brief: penjelasan tambahan dari user "mau seperti apa".
     Return teks siap-post (part dipisah '---' kalau >1).
     """
     lang = lang or persona.get("lang", "id")
@@ -136,10 +139,18 @@ def generate(topic, persona, num_parts=1, lang=None):
     rules = (
         "ATURAN WAJIB:\n"
         "- JANGAN pakai em-dash (—) sama sekali. Pakai koma / titik / kata sambung.\n"
-        "- Soft-sell: JANGAN taruh link di dalam thread. Link ditaruh di komen/reply.\n"
         "- Tulis natural, manusiawi, bukan gaya AI kaku.\n"
         f"- Bahasa: {'Indonesia santai' if lang == 'id' else 'English, global tone'}.\n"
     )
+    if has_link:
+        rules += (
+            "- Ini konten SOFT-SELL. Boleh ada CTA halus di bagian akhir yg bikin orang "
+            "penasaran sama produk/link, TAPI JANGAN taruh link di dalam thread. "
+            "Link ditaruh di reply/komen (di-handle otomatis, kamu gak usah nulis link).\n")
+    else:
+        rules += (
+            "- Ini MURNI STORYTELLING. JANGAN nawarin produk, JANGAN ada CTA jualan, "
+            "JANGAN nyerempet promosi apapun. Fokus cerita/insight/value aja yg natural.\n")
     if num_parts > 1:
         rules += (f"- Buat thread {num_parts} bagian. Pisah tiap bagian dengan baris "
                   "berisi '---' saja. Bagian pertama = hook kuat.\n")
@@ -156,9 +167,12 @@ def generate(topic, persona, num_parts=1, lang=None):
         ex = "\n\n".join(f"- {s}" for s in samples[:5])
         sys += f"\nCONTOH POST GAYA INI (tiru vibe-nya, jangan jiplak):\n{ex}\n"
 
+    user_msg = f"Bikin post Threads tentang: {topic}"
+    if extra_brief:
+        user_msg += f"\n\nArahan tambahan dari user: {extra_brief}"
     out = _chat([
         {"role": "system", "content": sys},
-        {"role": "user", "content": f"Bikin post Threads tentang: {topic}"}
+        {"role": "user", "content": user_msg}
     ], max_tokens=1200)
     # bersihin em-dash kalau lolos
     out = out.replace("—", ", ").replace(" –", ",")
