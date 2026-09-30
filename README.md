@@ -60,6 +60,15 @@ python3 scripts/migrate.py
 # → http://127.0.0.1:8455
 ```
 
+## Autostart (macOS, nyala sendiri pas login)
+
+```bash
+bash deploy/install.sh
+```
+
+Pakai launchd (`com.branko.threads-cms-v2`), KeepAlive on (auto-restart kalau mati).
+Server + scheduler + auto random-post jalan terus di background.
+
 ## .env
 
 ```
