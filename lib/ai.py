@@ -179,6 +179,45 @@ def generate(topic, persona, num_parts=1, lang=None, has_link=False, extra_brief
     return out.strip()
 
 
+# ── random auto-post (edukasi, niche-based) ─────────────────────────────────
+def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
+                    topic_hint=None):
+    """Bikin utas edukasi random sesuai niche + style guide referensi.
+    lang: 'id' atau 'en' (ikut bahasa akun).
+    persona: opsional, kalau ada dipakai buat nambah karakter.
+    Return teks siap-post (part dipisah '---').
+    """
+    lang_rule = ("Bahasa Indonesia santai, ngobrol, relatable."
+                 if lang == "id" else
+                 "English, casual but insightful, global audience tone.")
+    sys = (
+        "Kamu content creator Threads jago bikin utas edukasi yg viral & natural.\n\n"
+        f"NICHE: {niche}\n\n"
+        f"GAYA WAJIB DITIRU:\n{style_guide}\n\n"
+        "ATURAN:\n"
+        f"- {lang_rule}\n"
+        "- JANGAN pakai em-dash (—). Pakai koma/titik.\n"
+        f"- Buat {num_parts} bagian. Pisah tiap bagian dgn baris '---' saja.\n"
+        "- Bagian 1 = HOOK kuat yg bikin berhenti scroll.\n"
+        "- Isi value konkret & actionable, bukan omong kosong motivasi.\n"
+        "- Ini KONTEN EDUKASI murni. JANGAN jualan/promosi produk apapun.\n"
+        "- Tutup dgn soft CTA (save/komen/pilih).\n"
+        "- Tulis kayak manusia beneran, bukan AI. Natural, ada opini."
+    )
+    if persona and persona.get("system_prompt"):
+        sys += f"\n\nKARAKTER TAMBAHAN: {persona['system_prompt']}"
+    user = f"Bikin 1 utas edukasi tentang niche '{niche}'."
+    if topic_hint:
+        user += f" Fokus ke sudut: {topic_hint}."
+    user += " Pilih angle yg fresh & spesifik, jangan generik."
+    out = _chat([
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user}
+    ], max_tokens=1300)
+    out = out.replace("—", ", ").replace(" –", ",")
+    return out.strip()
+
+
 if __name__ == "__main__":
     import sys
     print(json.dumps({"base": AI_BASE, "model": AI_MODEL, "key_set": bool(AI_KEY)}, indent=2))

@@ -59,8 +59,55 @@ def _softsell_reply(post, results):
 
 
 # ── scheduler ─────────────────────────────────────────────────────────────
+def _plan_autopost():
+    """Sekali sehari per akun yg enabled: generate N utas edukasi random,
+    jadwalin di jam-jam terbaik (random menit). Masuk queue sbg source=auto,
+    status scheduled -> user bisa batalin sebelum kepost."""
+    import random
+    today = datetime.now(db.WIB).strftime("%Y-%m-%d")
+    for handle in db.list_enabled_autopost():
+        cfg = db.get_autopost(handle)
+        if cfg.get("last_scheduled") == today:
+            continue  # udah digenerate hari ini
+        niches = cfg.get("niches") or []
+        if not niches:
+            print(f"[autopost] @{handle} enabled tapi niche kosong, skip", flush=True)
+            continue
+        n = max(1, min(int(cfg.get("posts_per_day", 3)), len(cfg.get("best_hours") or [1])))
+        hours = list(cfg.get("best_hours") or db.DEFAULT_HOURS)
+        random.shuffle(hours)
+        chosen_hours = sorted(hours[:n])
+        persona = db.get_persona(cfg["persona_id"]) if cfg.get("persona_id") else None
+        lang = cfg.get("lang", "id")
+        guide = cfg.get("style_guide") or db.DEFAULT_STYLE_GUIDE
+        pmin = int(cfg.get("num_parts_min", 1)); pmax = int(cfg.get("num_parts_max", 3))
+        made = 0
+        for hr in chosen_hours:
+            niche = random.choice(niches)
+            nparts = random.randint(pmin, max(pmin, pmax))
+            try:
+                text = ai.generate_random(niche, guide, lang=lang,
+                                          num_parts=nparts, persona=persona)
+            except Exception as e:
+                print(f"[autopost] @{handle} gagal generate ({niche}): {e}", flush=True)
+                continue
+            # jadwal: hari ini jam hr, menit random
+            now = datetime.now(db.WIB)
+            sched = now.replace(hour=hr, minute=random.randint(0, 55),
+                                second=0, microsecond=0)
+            if sched <= now:  # jam udah lewat, geser besok
+                from datetime import timedelta
+                sched = sched + timedelta(days=1)
+            db.new_post(handle, text, scheduled_at=sched.isoformat(), source="auto")
+            made += 1
+            print(f"[autopost] @{handle} +1 utas '{niche}' @ {sched.strftime('%d/%m %H:%M')}", flush=True)
+        if made:
+            db.mark_autopost_scheduled(handle, today)
+
+
 def scheduler_loop():
     print("[scheduler] mulai (cek tiap 30s)", flush=True)
+    _tick = 0
     while True:
         try:
             with _lock:
@@ -83,6 +130,13 @@ def scheduler_loop():
                         print(f"[scheduler] FAIL {pid}: {e}", flush=True)
         except Exception as e:
             print(f"[scheduler] err: {e}", flush=True)
+        # cek autopost planner tiap ~10 menit (20 tick x 30s)
+        _tick += 1
+        if _tick % 20 == 1:
+            try:
+                _plan_autopost()
+            except Exception as e:
+                print(f"[autopost] planner err: {e}", flush=True)
         time.sleep(30)
 
 
@@ -135,6 +189,8 @@ class H(BaseHTTPRequestHandler):
             if path == "/api/persona":
                 p = db.get_persona(int(q.get("id", ["0"])[0]))
                 return self._json(p or {"error": "not found"}, 200 if p else 404)
+            if path == "/api/autopost":
+                return self._json(db.get_autopost(q.get("handle", [""])[0]))
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)
@@ -231,6 +287,40 @@ class H(BaseHTTPRequestHandler):
                                    has_link=bool(body.get("has_link")),
                                    extra_brief=body.get("brief"))
                 return self._json({"ok": True, "text": text})
+            # ── autopost ──
+            if path == "/api/autopost/save":
+                db.save_autopost(
+                    handle=body["handle"],
+                    enabled=body.get("enabled"),
+                    lang=body.get("lang"),
+                    niches=body.get("niches"),
+                    posts_per_day=body.get("posts_per_day"),
+                    best_hours=body.get("best_hours"),
+                    persona_id=body.get("persona_id"),
+                    num_parts_min=body.get("num_parts_min"),
+                    num_parts_max=body.get("num_parts_max"),
+                    style_urls=body.get("style_urls"),
+                    style_guide=body.get("style_guide"))
+                return self._json({"ok": True, "config": db.get_autopost(body["handle"])})
+            if path == "/api/autopost/toggle":
+                cfg = db.get_autopost(body["handle"])
+                new_state = 0 if cfg["enabled"] else 1
+                db.save_autopost(body["handle"], enabled=new_state)
+                return self._json({"ok": True, "enabled": new_state})
+            if path == "/api/autopost/generate_now":
+                # generate 1 preview utas (gak dijadwal, buat dicek)
+                cfg = db.get_autopost(body["handle"])
+                niches = body.get("niches") or cfg.get("niches") or []
+                if not niches:
+                    return self._json({"error": "niche kosong"}, 400)
+                import random as _r
+                niche = body.get("niche") or _r.choice(niches)
+                persona = db.get_persona(cfg["persona_id"]) if cfg.get("persona_id") else None
+                text = ai.generate_random(
+                    niche, cfg.get("style_guide"),
+                    lang=body.get("lang") or cfg.get("lang", "id"),
+                    num_parts=int(body.get("num_parts", 2)), persona=persona)
+                return self._json({"ok": True, "niche": niche, "text": text})
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)

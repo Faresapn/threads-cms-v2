@@ -109,6 +109,7 @@
   <div class="tabs">
     <button data-tab="compose" class="on">Compose</button>
     <button data-tab="persona">Persona AI</button>
+    <button data-tab="autopost">Auto-Post</button>
     <button data-tab="insight">Insight</button>
   </div>
 
@@ -215,6 +216,72 @@
   </div>
   </div>
 
+  <!-- ===== AUTO-POST TAB ===== -->
+  <div class="tab-page" id="tab-autopost">
+  <div class="grid">
+    <div class="card">
+      <h2>Auto Random-Post</h2>
+      <label>Akun</label>
+      <select id="ap-handle"></select>
+
+      <div class="row" style="justify-content:space-between; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:12px;">
+        <div><strong style="font-size:14px" id="ap-state-label">OFF</strong>
+          <div class="hint" style="margin:0">Nyalain buat auto-generate + jadwal utas tiap hari</div></div>
+        <button id="ap-toggle" class="ghost">Toggle ON/OFF</button>
+      </div>
+
+      <label>Bahasa post</label>
+      <select id="ap-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
+
+      <label>Niche (1 per baris) — utas dipilih random dari sini</label>
+      <textarea id="ap-niches" class="sm" placeholder="AI tools&#10;Side Hustle&#10;Self Improvement&#10;Prompt engineering"></textarea>
+
+      <label>Link referensi gaya penulisan (1 per baris) — opsional</label>
+      <textarea id="ap-styleurls" class="sm" placeholder="https://www.threads.net/@ragajatsuma/post/xxx"></textarea>
+      <div class="hint">Link contoh gaya. (Catatan: Threads batasi baca post akun orang, jadi ini disimpan sbg catatan + dipakai style guide bawaan.)</div>
+
+      <label>Panduan gaya (style guide) — bisa diedit</label>
+      <textarea id="ap-guide" style="min-height:120px"></textarea>
+
+      <div class="row">
+        <div style="flex:1"><label>Post per hari</label>
+          <input type="number" id="ap-ppd" value="3" min="1" max="8"></div>
+        <div style="flex:1"><label>Part min</label>
+          <input type="number" id="ap-pmin" value="1" min="1" max="6"></div>
+        <div style="flex:1"><label>Part max</label>
+          <input type="number" id="ap-pmax" value="3" min="1" max="6"></div>
+      </div>
+
+      <label>Jam terbaik (WIB, pisah koma) — sistem pilih random dari sini</label>
+      <input type="text" id="ap-hours" placeholder="8, 12, 18, 21">
+
+      <label>Persona (opsional, buat nambah karakter)</label>
+      <select id="ap-persona"><option value="">— tanpa persona —</option></select>
+
+      <div class="row" style="margin-top:16px">
+        <button id="ap-save">Simpan Config</button>
+        <button class="ai" id="ap-preview">✨ Preview 1 Utas</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Preview & Info</h2>
+      <div id="ap-preview-box"><div class="empty">Klik "Preview 1 Utas" buat lihat contoh hasil AI</div></div>
+      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border)">
+        <div class="hint" style="line-height:1.7">
+          <b>Cara kerja:</b><br>
+          • Kalau ON, tiap hari sistem generate utas edukasi random sesuai niche<br>
+          • Dijadwal di jam terbaik (menit random)<br>
+          • Masuk ke Queue tab Compose dgn tanda <span class="tag">auto</span><br>
+          • Kamu bisa <b>hapus/batalin</b> sebelum kepost<br>
+          • Bahasa ikut setting (EN/ID)<br>
+          • Kepisah dari post manual kamu
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
   <!-- ===== INSIGHT TAB ===== -->
   <div class="tab-page" id="tab-insight">
   <div class="card">
@@ -253,13 +320,14 @@ document.querySelectorAll(".tabs button").forEach(b=>{
     document.querySelectorAll(".tab-page").forEach(p=>p.classList.remove("on"));
     $("#tab-"+b.dataset.tab).classList.add("on");
     if (b.dataset.tab==="persona") loadPersonas();
+    if (b.dataset.tab==="autopost") loadAutopost();
   });
 });
 
 // ── accounts ──
 function fillAccountSelects() {
   const opts = accounts.map(a=>`<option value="${a.handle}">@${a.handle}</option>`).join("");
-  ["#handle","#p-handle","#ins-handle"].forEach(s=>{ if($(s)) $(s).innerHTML=opts; });
+  ["#handle","#p-handle","#ins-handle","#ap-handle"].forEach(s=>{ if($(s)) $(s).innerHTML=opts; });
 }
 async function loadAccounts() {
   accounts = await api("/api/accounts");
@@ -381,7 +449,7 @@ function renderPost(p) {
   const when = p.scheduled_at ? new Date(p.scheduled_at).toLocaleString("id-ID") : "";
   const posted = p.posted_at ? new Date(p.posted_at).toLocaleString("id-ID") : "";
   return `<div class="post"><div class="top">
-      <span class="handle">@${p.handle}</span><span class="st ${p.status}">${p.status}</span></div>
+      <span class="handle">@${p.handle} ${p.source==="auto"?'<span class="tag">auto</span>':''}</span><span class="st ${p.status}">${p.status}</span></div>
     <div class="txt">${esc(p.text)}</div>
     ${imgs?`<div class="mini-img">${imgs}</div>`:""}
     ${p.softsell_link?`<div class="meta" style="color:var(--gold)">🔗 soft-sell: ${esc(p.softsell_link)}</div>`:""}
@@ -475,6 +543,92 @@ $("#btn-plearn").addEventListener("click", async ()=>{
     $("#learn-status").innerHTML = `✅ belajar dari ${j.samples_found} post. Gaya:<br><em>${esc(j.learned_style.slice(0,200))}...</em>`;
     toast("gaya dipelajari ✓","ok"); loadPersonas();
   } catch(e){ $("#learn-status").textContent="⚠ "+e.message; toast("gagal belajar: "+e.message,"err"); }
+  finally { btn.disabled=false; btn.innerHTML=old; }
+});
+
+// ── AUTOPOST ──
+async function loadAutopostPersonas() {
+  const h = $("#ap-handle").value;
+  try {
+    const ps = await api("/api/personas" + (h?`?handle=${h}`:""));
+    const cur = $("#ap-persona").value;
+    $("#ap-persona").innerHTML = '<option value="">— tanpa persona —</option>' +
+      ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  } catch(e){}
+}
+async function loadAutopost() {
+  const h = $("#ap-handle").value;
+  if (!h) return;
+  await loadAutopostPersonas();
+  try {
+    const c = await api("/api/autopost?handle="+h);
+    setApState(c.enabled);
+    $("#ap-lang").value = c.lang || "id";
+    $("#ap-niches").value = (c.niches||[]).join("\n");
+    $("#ap-styleurls").value = (c.style_urls||[]).join("\n");
+    $("#ap-guide").value = c.style_guide || "";
+    $("#ap-ppd").value = c.posts_per_day || 3;
+    $("#ap-pmin").value = c.num_parts_min || 1;
+    $("#ap-pmax").value = c.num_parts_max || 3;
+    $("#ap-hours").value = (c.best_hours||[8,12,18,21]).join(", ");
+    if (c.persona_id) $("#ap-persona").value = c.persona_id;
+  } catch(e){ toast("gagal load config: "+e.message,"err"); }
+}
+function setApState(on) {
+  $("#ap-state-label").textContent = on ? "ON ✅" : "OFF";
+  $("#ap-state-label").style.color = on ? "var(--ok)" : "var(--muted)";
+}
+$("#ap-handle").addEventListener("change", loadAutopost);
+function apPayload() {
+  return {
+    handle: $("#ap-handle").value,
+    lang: $("#ap-lang").value,
+    niches: $("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    style_urls: $("#ap-styleurls").value.split("\n").map(s=>s.trim()).filter(Boolean),
+    style_guide: $("#ap-guide").value.trim(),
+    posts_per_day: parseInt($("#ap-ppd").value)||3,
+    num_parts_min: parseInt($("#ap-pmin").value)||1,
+    num_parts_max: parseInt($("#ap-pmax").value)||3,
+    best_hours: $("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),
+    persona_id: $("#ap-persona").value ? parseInt($("#ap-persona").value) : null,
+  };
+}
+$("#ap-save").addEventListener("click", async ()=>{
+  const p = apPayload();
+  if (!p.niches.length) return toast("isi minimal 1 niche","err");
+  try { await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
+    toast("config tersimpan ✓","ok");
+  } catch(e){ toast("gagal: "+e.message,"err"); }
+});
+$("#ap-toggle").addEventListener("click", async ()=>{
+  const h = $("#ap-handle").value;
+  // simpan config dulu biar toggle nyimpen setting terbaru
+  const p = apPayload();
+  if (!p.niches.length) return toast("isi niche dulu sebelum ON","err");
+  try {
+    await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
+    const j = await api("/api/autopost/toggle", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({handle:h}) });
+    setApState(j.enabled);
+    toast(j.enabled ? "Auto-post ON ✅" : "Auto-post OFF","ok");
+  } catch(e){ toast("gagal: "+e.message,"err"); }
+});
+$("#ap-preview").addEventListener("click", async ()=>{
+  const p = apPayload();
+  if (!p.niches.length) return toast("isi niche dulu","err");
+  // simpan biar preview pakai guide terbaru
+  await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) }).catch(()=>{});
+  const btn = $("#ap-preview"); const old=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> generating...';
+  $("#ap-preview-box").innerHTML='<div class="empty"><span class="spin"></span> AI bikin utas...</div>';
+  try {
+    const j = await api("/api/autopost/generate_now", { method:"POST", headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({handle:$("#ap-handle").value, num_parts:parseInt($("#ap-pmax").value)||2}) });
+    $("#ap-preview-box").innerHTML = `<div class="post"><div class="top">
+      <span class="handle">niche: ${esc(j.niche)}</span><span class="tag">preview</span></div>
+      <div class="txt">${esc(j.text)}</div></div>
+      <div class="hint">Ini cuma preview, gak dijadwal. Kalau Auto-post ON, sistem bikin & jadwalin sendiri tiap hari.</div>`;
+    toast("preview jadi ✓","ok");
+  } catch(e){ $("#ap-preview-box").innerHTML=`<div class="empty">error: ${e.message}</div>`; toast("gagal: "+e.message,"err"); }
   finally { btn.disabled=false; btn.innerHTML=old; }
 });
 

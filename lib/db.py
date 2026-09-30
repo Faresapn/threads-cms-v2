@@ -27,6 +27,9 @@ def init_db():
     v2 = BASE / "db" / "schema_v2.sql"
     if v2.exists():
         con.executescript(v2.read_text())
+    v3 = BASE / "db" / "schema_v3.sql"
+    if v3.exists():
+        con.executescript(v3.read_text())
     # migrasi kolom soft-sell (idempotent)
     cols = {r["name"] for r in con.execute("PRAGMA table_info(posts)").fetchall()}
     if "softsell_link" not in cols:
@@ -35,6 +38,8 @@ def init_db():
         con.execute("ALTER TABLE posts ADD COLUMN softsell_text TEXT")
     if "softsell_result" not in cols:
         con.execute("ALTER TABLE posts ADD COLUMN softsell_result TEXT")
+    if "source" not in cols:
+        con.execute("ALTER TABLE posts ADD COLUMN source TEXT DEFAULT 'manual'")
     con.commit()
     con.close()
 
@@ -61,7 +66,8 @@ def list_accounts():
 
 
 # ── posts ───────────────────────────────────────────────────────────────
-def new_post(handle, text, scheduled_at=None, softsell_link=None, softsell_text=None):
+def new_post(handle, text, scheduled_at=None, softsell_link=None, softsell_text=None,
+             source="manual"):
     pid = "q_" + uuid.uuid4().hex[:8]
     status = "draft"
     sched = None
@@ -73,10 +79,10 @@ def new_post(handle, text, scheduled_at=None, softsell_link=None, softsell_text=
         status = "scheduled"
     con = connect()
     con.execute(
-        """INSERT INTO posts(id,handle,text,status,scheduled_at,created_at,softsell_link,softsell_text)
-           VALUES(?,?,?,?,?,?,?,?)""",
+        """INSERT INTO posts(id,handle,text,status,scheduled_at,created_at,softsell_link,softsell_text,source)
+           VALUES(?,?,?,?,?,?,?,?,?)""",
         (pid, handle, text, status, sched, now_iso(),
-         softsell_link or None, softsell_text or None),
+         softsell_link or None, softsell_text or None, source),
     )
     con.commit(); con.close()
     return pid
@@ -292,6 +298,85 @@ def delete_persona(pid):
     con = connect()
     con.execute("DELETE FROM personas WHERE id=?", (pid,))
     con.commit(); con.close()
+
+
+# ── autopost config ─────────────────────────────────────────────────────
+DEFAULT_HOURS = [8, 12, 18, 21]   # jam terbaik default (WIB)
+
+# Style guide built-in dari 3 referensi yg Branko kasih (hook + value + soft CTA).
+DEFAULT_STYLE_GUIDE = (
+    "Gaya utas edukasi Threads yg nge-hook:\n"
+    "- Buka dgn hook penasaran/kontroversi: 'Jujur agak kesel liat...', "
+    "'Eh tau nggak sih...', 'LIST KESALAHAN...', 'Baru ngonten di Threads? Ini...'\n"
+    "- Bongkar realita yg orang lain skip. Kasih value konkret: tools, cara benerin, "
+    "list actionable, angka nyata.\n"
+    "- Bahasa ngobrol, personal, kayak cerita ke temen. Bukan formal/korporat.\n"
+    "- Pakai bullet/list biar gampang dibaca. Kalimat pendek.\n"
+    "- Tutup dgn soft CTA: 'Save biar gak ilang', 'Pilih salah satu', "
+    "'cek di komen', tanya yg mancing komentar.\n"
+    "- JANGAN em-dash. JANGAN sok pintar. Relatable + berbobot."
+)
+
+
+def get_autopost(handle):
+    con = connect()
+    r = con.execute("SELECT * FROM autopost_config WHERE handle=?", (handle,)).fetchone()
+    con.close()
+    if not r:
+        return {"handle": handle, "enabled": 0, "lang": "id", "niches": [],
+                "posts_per_day": 3, "best_hours": DEFAULT_HOURS, "persona_id": None,
+                "num_parts_min": 1, "num_parts_max": 3, "last_scheduled": None,
+                "style_urls": [], "style_guide": DEFAULT_STYLE_GUIDE}
+    d = dict(r)
+    d["niches"] = json.loads(d["niches"]) if d["niches"] else []
+    d["best_hours"] = json.loads(d["best_hours"]) if d["best_hours"] else DEFAULT_HOURS
+    d["style_urls"] = json.loads(d["style_urls"]) if d.get("style_urls") else []
+    d["style_guide"] = d.get("style_guide") or DEFAULT_STYLE_GUIDE
+    return d
+
+
+def save_autopost(handle, enabled=None, lang=None, niches=None, posts_per_day=None,
+                  best_hours=None, persona_id=None, num_parts_min=None,
+                  num_parts_max=None, style_urls=None, style_guide=None):
+    cur = get_autopost(handle)
+    con = connect()
+    con.execute(
+        """INSERT INTO autopost_config(handle,enabled,lang,niches,posts_per_day,
+           best_hours,persona_id,num_parts_min,num_parts_max,style_urls,style_guide,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(handle) DO UPDATE SET
+             enabled=excluded.enabled, lang=excluded.lang, niches=excluded.niches,
+             posts_per_day=excluded.posts_per_day, best_hours=excluded.best_hours,
+             persona_id=excluded.persona_id, num_parts_min=excluded.num_parts_min,
+             num_parts_max=excluded.num_parts_max, style_urls=excluded.style_urls,
+             style_guide=excluded.style_guide, updated_at=excluded.updated_at""",
+        (handle,
+         cur["enabled"] if enabled is None else int(enabled),
+         cur["lang"] if lang is None else lang,
+         json.dumps(cur["niches"] if niches is None else niches, ensure_ascii=False),
+         cur["posts_per_day"] if posts_per_day is None else int(posts_per_day),
+         json.dumps(cur["best_hours"] if best_hours is None else best_hours),
+         cur["persona_id"] if persona_id is None else persona_id,
+         cur["num_parts_min"] if num_parts_min is None else int(num_parts_min),
+         cur["num_parts_max"] if num_parts_max is None else int(num_parts_max),
+         json.dumps(cur["style_urls"] if style_urls is None else style_urls, ensure_ascii=False),
+         cur["style_guide"] if style_guide is None else style_guide,
+         now_iso()))
+    con.commit(); con.close()
+
+
+def mark_autopost_scheduled(handle, date_str):
+    con = connect()
+    con.execute("UPDATE autopost_config SET last_scheduled=? WHERE handle=?",
+                (date_str, handle))
+    con.commit(); con.close()
+
+
+def list_enabled_autopost():
+    con = connect()
+    rows = con.execute("SELECT handle FROM autopost_config WHERE enabled=1").fetchall()
+    con.close()
+    return [r["handle"] for r in rows]
 
 
 if __name__ == "__main__":
