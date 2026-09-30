@@ -186,6 +186,10 @@ class H(BaseHTTPRequestHandler):
             if path == "/api/insight":
                 return self._json(threads_api.post_insight(
                     q.get("handle", [""])[0], q.get("post_id", [""])[0]))
+            if path == "/api/analytics":
+                return self._json(threads_api.account_analytics(
+                    q.get("handle", [""])[0],
+                    int(q.get("limit", ["25"])[0])))
             if path == "/api/personas":
                 return self._json(db.list_personas(q.get("handle", [None])[0]))
             if path == "/api/persona":

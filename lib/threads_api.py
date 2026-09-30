@@ -208,6 +208,52 @@ def post_insight(handle, post_id):
     return out
 
 
+def account_analytics(handle, limit=25):
+    """Agregat performa akun: total post, sum views/likes/replies/reposts/quotes,
+    engagement rate + top post. Ambil dari Threads API (post live + insight)."""
+    tok = _tokens().get(handle)
+    if not tok:
+        return {"error": f"token @{handle} gak ada"}
+    try:
+        posts = list_live_posts(handle, limit=limit)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode()[:150]
+        except Exception:
+            pass
+        return {"error": f"Threads API error ({e.code}) baca post @{handle}. "
+                         f"Cek token/scope akun ini. {body}"}
+    except Exception as e:
+        return {"error": str(e)[:180]}
+    totals = {"views": 0, "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
+    detailed = []
+    for p in posts:
+        pid = p.get("id")
+        if not pid or p.get("is_reply"):
+            continue
+        ins = post_insight(handle, pid)
+        if isinstance(ins, dict) and not ins.get("error"):
+            for k in totals:
+                totals[k] += int(ins.get(k, 0) or 0)
+            detailed.append({
+                "id": pid, "text": p.get("text", "")[:100],
+                "permalink": p.get("permalink"), "timestamp": p.get("timestamp"),
+                **{k: int(ins.get(k, 0) or 0) for k in totals},
+            })
+    n = len(detailed)
+    views = totals["views"]
+    eng = totals["likes"] + totals["replies"] + totals["reposts"] + totals["quotes"]
+    eng_rate = round(eng / views * 100, 2) if views else 0
+    top = sorted(detailed, key=lambda x: x["views"], reverse=True)[:5]
+    return {
+        "ok": True, "handle": handle, "posts_analyzed": n,
+        "totals": totals, "engagement_total": eng, "engagement_rate": eng_rate,
+        "avg_views": round(views / n) if n else 0,
+        "top_posts": top, "all_posts": detailed,
+    }
+
+
 def refresh_token(handle):
     """Refresh long-lived token (extend 60 hari)."""
     tok = _tokens().get(handle)
