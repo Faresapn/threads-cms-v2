@@ -100,3 +100,68 @@ def publishing_limit(handle):
     url = (f"{GRAPH}/v1.0/{uid}/threads_publishing_limit?fields=quota_usage,config"
            f"&access_token={urllib.parse.quote(tok)}")
     return _http(url)
+
+
+def list_live_posts(handle, limit=25):
+    """Daftar post terkirim dari Threads API (bukan queue lokal)."""
+    tok = _tokens().get(handle)
+    if not tok:
+        raise RuntimeError(f"token @{handle} gak ada")
+    uid = account_info(handle, force=True).get("id")
+    if not uid:
+        raise RuntimeError("gak dapet user id")
+    url = (f"{GRAPH}/v1.0/{uid}/threads?fields=id,media_type,text,permalink,"
+           f"timestamp,is_reply&limit={limit}&access_token={urllib.parse.quote(tok)}")
+    r = _http(url)
+    out = []
+    for p in r.get("data", []):
+        out.append({
+            "id": p.get("id"),
+            "media_type": p.get("media_type"),
+            "text": (p.get("text") or "")[:220],
+            "permalink": p.get("permalink"),
+            "timestamp": p.get("timestamp"),
+            "is_reply": p.get("is_reply", False),
+        })
+    return out
+
+
+def post_insight(handle, post_id):
+    """Metrik 1 post: views, likes, replies, reposts, quotes."""
+    tok = _tokens().get(handle)
+    if not tok:
+        raise RuntimeError(f"token @{handle} gak ada")
+    metrics = "views,likes,replies,reposts,quotes"
+    url = (f"{GRAPH}/v1.0/{post_id}/insights?metric={metrics}"
+           f"&access_token={urllib.parse.quote(tok)}")
+    try:
+        r = _http(url)
+    except urllib.error.HTTPError as e:
+        return {"error": e.read().decode()[:200]}
+    out = {}
+    for m in r.get("data", []):
+        name = m.get("name")
+        vals = m.get("values", [{}])
+        out[name] = vals[0].get("value", 0) if vals else 0
+    return out
+
+
+def refresh_token(handle):
+    """Refresh long-lived token (extend 60 hari)."""
+    tok = _tokens().get(handle)
+    if not tok:
+        return {"error": "akun gak ketemu"}
+    url = (f"{GRAPH}/refresh_access_token?grant_type=th_refresh_token"
+           f"&access_token={urllib.parse.quote(tok)}")
+    try:
+        res = _http(url)
+    except urllib.error.HTTPError as e:
+        return {"error": f"HTTP {e.code}: {e.read().decode()[:150]}"}
+    if "access_token" in res:
+        d = _tokens()
+        d[handle] = res["access_token"]
+        TOKENS.write_text(json.dumps(d, indent=2))
+        TOKENS.chmod(0o600)
+        _cache.pop(handle, None)
+        return {"ok": True, "expires_in": res.get("expires_in")}
+    return {"error": str(res)[:150]}

@@ -8,48 +8,50 @@
   :root {
     --bg:#0a0a0b; --surface:#141416; --surface2:#1c1c20; --border:#2a2a30;
     --fg:#e8e8ea; --muted:#8a8a93; --accent:#5b8cff; --accent2:#4a7aef;
-    --ok:#3ecf8e; --warn:#f5a623; --err:#ff5c5c; --gold:#e6c068;
+    --ok:#3ecf8e; --warn:#f5a623; --err:#ff5c5c; --gold:#e6c068; --ai:#b57bff;
     --radius:14px;
   }
   * { box-sizing:border-box; margin:0; padding:0; }
-  body {
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg); color:var(--fg); line-height:1.5; font-size:14px;
-  }
-  .wrap { max-width:1100px; margin:0 auto; padding:24px 18px 80px; }
-  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--fg); line-height:1.5; font-size:14px; }
+  .wrap { max-width:1140px; margin:0 auto; padding:22px 18px 80px; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
   header h1 { font-size:20px; font-weight:700; letter-spacing:-.02em; }
   header h1 span { color:var(--accent); }
   .badge { font-size:11px; color:var(--muted); font-family:ui-monospace,monospace;
     background:var(--surface2); padding:3px 8px; border-radius:20px; border:1px solid var(--border); }
+  .tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--border); }
+  .tabs button { background:none; border:none; color:var(--muted); padding:10px 16px; font-size:14px;
+    font-weight:600; cursor:pointer; border-bottom:2px solid transparent; font-family:inherit; }
+  .tabs button.on { color:var(--fg); border-bottom-color:var(--accent); }
+  .tab-page { display:none; }
+  .tab-page.on { display:block; }
   .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media(max-width:820px){ .grid{ grid-template-columns:1fr; } }
+  @media(max-width:860px){ .grid{ grid-template-columns:1fr; } }
   .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
   .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px; font-weight:600; }
   label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px; }
-  select, input[type=text], input[type=datetime-local], textarea {
+  select, input[type=text], input[type=datetime-local], input[type=number], textarea {
     width:100%; background:var(--surface2); border:1px solid var(--border);
-    color:var(--fg); border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit;
-  }
+    color:var(--fg); border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; }
   textarea { min-height:130px; resize:vertical; line-height:1.55; }
+  textarea.sm { min-height:64px; }
   select:focus, input:focus, textarea:focus { outline:none; border-color:var(--accent); }
   .hint { font-size:11px; color:var(--muted); margin-top:5px; }
   .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  button {
-    background:var(--accent); color:#fff; border:none; border-radius:10px;
-    padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;
-  }
+  button { background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
   button:hover { background:var(--accent2); }
   button.ghost { background:transparent; border:1px solid var(--border); color:var(--fg); }
   button.ghost:hover { background:var(--surface2); }
+  button.ai { background:var(--ai); }
+  button.ai:hover { background:#a565f5; }
   button.danger { background:transparent; border:1px solid var(--err); color:var(--err); }
   button.danger:hover { background:rgba(255,92,92,.1); }
   button.sm { padding:6px 11px; font-size:12px; }
   button:disabled { opacity:.5; cursor:not-allowed; }
-  .drop {
-    border:2px dashed var(--border); border-radius:12px; padding:22px; text-align:center;
-    color:var(--muted); cursor:pointer; transition:.15s; font-size:13px;
-  }
+  .drop { border:2px dashed var(--border); border-radius:12px; padding:20px; text-align:center;
+    color:var(--muted); cursor:pointer; transition:.15s; font-size:13px; }
   .drop.over { border-color:var(--accent); background:rgba(91,140,255,.06); color:var(--fg); }
   .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
   .thumb { position:relative; width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid var(--border); }
@@ -75,13 +77,26 @@
   .filters button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .mini-img { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
   .mini-img img { width:46px; height:46px; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
+  .persona-item { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:10px; }
+  .persona-item .pn { font-weight:600; font-size:14px; }
+  .persona-item .pd { font-size:12px; color:var(--muted); margin-top:3px; }
+  .persona-item .pstyle { font-size:11px; color:var(--muted); margin-top:7px; background:var(--bg); padding:8px; border-radius:8px; max-height:80px; overflow:auto; white-space:pre-wrap; }
+  .tag { font-size:10px; background:rgba(181,123,255,.15); color:var(--ai); padding:2px 7px; border-radius:20px; font-weight:700; }
+  .tag.def { background:rgba(230,192,104,.15); color:var(--gold); }
+  .ins { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
+  .ins .box { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 12px; text-align:center; min-width:66px; }
+  .ins .box .n { font-size:16px; font-weight:700; }
+  .ins .box .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
   #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
     background:var(--surface2); border:1px solid var(--border); padding:11px 18px;
-    border-radius:12px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:99; }
+    border-radius:12px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:99; max-width:80%; }
   #toast.show { opacity:1; }
   #toast.err { border-color:var(--err); color:var(--err); }
   #toast.ok { border-color:var(--ok); color:var(--ok); }
-  .empty { text-align:center; color:var(--muted); padding:30px; font-size:13px; }
+  .empty { text-align:center; color:var(--muted); padding:26px; font-size:13px; }
+  .spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3);
+    border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; }
+  @keyframes sp { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
@@ -91,12 +106,36 @@
     <span class="badge" id="acc-badge">loading...</span>
   </header>
 
+  <div class="tabs">
+    <button data-tab="compose" class="on">Compose</button>
+    <button data-tab="persona">Persona AI</button>
+    <button data-tab="insight">Insight</button>
+  </div>
+
+  <!-- ===== COMPOSE TAB ===== -->
+  <div class="tab-page on" id="tab-compose">
   <div class="grid">
-    <!-- COMPOSE -->
     <div class="card">
       <h2>Compose</h2>
       <label>Akun</label>
       <select id="handle"></select>
+
+      <!-- AI GENERATE -->
+      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:12px;">
+        <div class="row" style="justify-content:space-between">
+          <strong style="font-size:12px; color:var(--ai)">✨ AI Generate</strong>
+        </div>
+        <label>Persona</label>
+        <select id="gen-persona"><option value="">— tanpa persona —</option></select>
+        <label>Topik / ide</label>
+        <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
+        <div class="row" style="margin-top:10px">
+          <label style="margin:0">Jumlah part</label>
+          <input type="number" id="gen-parts" value="1" min="1" max="6" style="width:70px">
+          <button class="ai" id="btn-gen">Generate</button>
+        </div>
+        <div class="hint">Hasil masuk ke kotak teks di bawah, bisa diedit dulu.</div>
+      </div>
 
       <label>Teks (pisah part chain pakai <code>---</code> di baris sendiri)</label>
       <textarea id="text" placeholder="Tulis thread di sini...&#10;&#10;---&#10;&#10;Part kedua (auto jadi reply)"></textarea>
@@ -116,7 +155,6 @@
       </div>
     </div>
 
-    <!-- QUEUE -->
     <div class="card">
       <h2>Queue &amp; Riwayat</h2>
       <div class="filters" id="filters">
@@ -129,17 +167,65 @@
       <div id="list"><div class="empty">memuat...</div></div>
     </div>
   </div>
+  </div>
+
+  <!-- ===== PERSONA TAB ===== -->
+  <div class="tab-page" id="tab-persona">
+  <div class="grid">
+    <div class="card">
+      <h2 id="pf-title">Buat Persona</h2>
+      <input type="hidden" id="p-id">
+      <label>Akun</label>
+      <select id="p-handle"></select>
+      <label>Nama persona</label>
+      <input type="text" id="p-name" placeholder="mis: Visioner EN Global">
+      <label>Deskripsi singkat (buat kamu inget)</label>
+      <input type="text" id="p-desc" placeholder="tone visioner, soft-sell, AI design">
+      <label>Bahasa</label>
+      <select id="p-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
+      <label>Instruksi gaya (system prompt) — opsional</label>
+      <textarea id="p-sys" class="sm" placeholder="Nulis soal AI & design, tone visioner tapi santai, soft-sell (link di reply)"></textarea>
+      <label>Link Threads buat dipelajari gayanya (1 URL per baris)</label>
+      <textarea id="p-urls" class="sm" placeholder="https://www.threads.net/@promptedsite/post/xxx&#10;https://www.threads.net/@promptedsite/post/yyy"></textarea>
+      <div class="hint">AI bakal fetch post dari link ini + post akun sendiri, terus niru gayanya.</div>
+      <label class="row" style="margin-top:12px"><input type="checkbox" id="p-default" style="width:auto; margin-right:7px"> Jadikan default akun ini</label>
+      <div class="row" style="margin-top:14px">
+        <button id="btn-psave">Simpan Persona</button>
+        <button class="ai" id="btn-plearn">✨ Belajar Gaya dari Link</button>
+        <button class="ghost" id="btn-pnew">Baru</button>
+      </div>
+      <div class="hint" id="learn-status"></div>
+    </div>
+    <div class="card">
+      <h2>Daftar Persona</h2>
+      <div id="persona-list"><div class="empty">memuat...</div></div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ===== INSIGHT TAB ===== -->
+  <div class="tab-page" id="tab-insight">
+  <div class="card">
+    <h2>Insight Post Terkirim (dari Threads)</h2>
+    <div class="row">
+      <select id="ins-handle" style="max-width:240px"></select>
+      <button id="btn-insload">Muat Post</button>
+    </div>
+    <div id="insight-list" style="margin-top:16px"><div class="empty">pilih akun lalu klik Muat Post</div></div>
+  </div>
+  </div>
 </div>
 <div id="toast"></div>
 
 <script>
 const $ = s => document.querySelector(s);
-let uploads = [];      // {r2_key, public_url, filename}
+let uploads = [];
 let curFilter = "";
+let accounts = [];
 
 function toast(msg, kind="") {
   const t = $("#toast"); t.textContent = msg; t.className = "show " + kind;
-  setTimeout(()=> t.className = "", 2600);
+  setTimeout(()=> t.className = "", 3000);
 }
 async function api(path, opts) {
   const r = await fetch(path, opts);
@@ -148,13 +234,54 @@ async function api(path, opts) {
   return j;
 }
 
+// ── tabs ──
+document.querySelectorAll(".tabs button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on", x===b));
+    document.querySelectorAll(".tab-page").forEach(p=>p.classList.remove("on"));
+    $("#tab-"+b.dataset.tab).classList.add("on");
+    if (b.dataset.tab==="persona") loadPersonas();
+  });
+});
+
 // ── accounts ──
-async function loadAccounts() {
-  const accs = await api("/api/accounts");
-  const sel = $("#handle");
-  sel.innerHTML = accs.map(a => `<option value="${a.handle}">@${a.handle}</option>`).join("");
-  $("#acc-badge").textContent = accs.length + " akun · :8455";
+function fillAccountSelects() {
+  const opts = accounts.map(a=>`<option value="${a.handle}">@${a.handle}</option>`).join("");
+  ["#handle","#p-handle","#ins-handle"].forEach(s=>{ if($(s)) $(s).innerHTML=opts; });
 }
+async function loadAccounts() {
+  accounts = await api("/api/accounts");
+  fillAccountSelects();
+  $("#acc-badge").textContent = accounts.length + " akun · :8455";
+}
+
+// ── AI generate ──
+async function loadGenPersonas() {
+  const handle = $("#handle").value;
+  try {
+    const ps = await api("/api/personas" + (handle?`?handle=${handle}`:""));
+    $("#gen-persona").innerHTML = '<option value="">— tanpa persona —</option>' +
+      ps.map(p=>`<option value="${p.id}" ${p.is_default?"selected":""}>${esc(p.name)}</option>`).join("");
+  } catch(e){}
+}
+$("#handle").addEventListener("change", loadGenPersonas);
+$("#btn-gen").addEventListener("click", async ()=>{
+  const topic = $("#gen-topic").value.trim();
+  if (!topic) return toast("isi topik dulu", "err");
+  const btn = $("#btn-gen"); const old = btn.innerHTML;
+  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> generating...';
+  try {
+    const payload = { topic, num_parts:parseInt($("#gen-parts").value)||1 };
+    const pid = $("#gen-persona").value;
+    if (pid) payload.persona_id = parseInt(pid);
+    else payload.lang = "id";
+    const j = await api("/api/generate", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+    $("#text").value = j.text; updateCount();
+    toast("digenerate ✓ (edit dulu kalau perlu)", "ok");
+  } catch(e){ toast("gagal generate: "+e.message, "err"); }
+  finally { btn.disabled=false; btn.innerHTML=old; }
+});
 
 // ── char counter ──
 function updateCount() {
@@ -171,7 +298,6 @@ drop.addEventListener("dragover", e=>{ e.preventDefault(); drop.classList.add("o
 drop.addEventListener("dragleave", ()=> drop.classList.remove("over"));
 drop.addEventListener("drop", e=>{ e.preventDefault(); drop.classList.remove("over"); handleFiles(e.dataTransfer.files); });
 fileInput.addEventListener("change", ()=> handleFiles(fileInput.files));
-
 async function handleFiles(files) {
   for (const f of files) {
     if (!f.type.startsWith("image/")) { toast("bukan gambar: "+f.name, "err"); continue; }
@@ -186,11 +312,8 @@ async function handleFiles(files) {
 }
 function renderThumbs() {
   $("#thumbs").innerHTML = uploads.map((u,i)=>`
-    <div class="thumb">
-      <img src="${u.public_url}" alt="">
-      <div class="idx">#${i}</div>
-      <div class="x" onclick="rmUpload(${i})">×</div>
-    </div>`).join("");
+    <div class="thumb"><img src="${u.public_url}" alt="">
+      <div class="idx">#${i}</div><div class="x" onclick="rmUpload(${i})">×</div></div>`).join("");
 }
 window.rmUpload = i => { uploads.splice(i,1); renderThumbs(); };
 
@@ -207,13 +330,11 @@ $("#btn-save").addEventListener("click", async ()=>{
     if (schedRaw) payload.scheduled_at = schedRaw;
     const j = await api("/api/post", { method:"POST",
       headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-    // attach images per part_index
     for (let i=0;i<uploads.length;i++){
       await api("/api/post/attach", { method:"POST",
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({ id:j.id, part_index:i,
-          r2_key:uploads[i].r2_key, public_url:uploads[i].public_url,
-          filename:uploads[i].filename }) });
+          r2_key:uploads[i].r2_key, public_url:uploads[i].public_url, filename:uploads[i].filename }) });
     }
     toast(schedRaw ? "terjadwal ✓" : "draft tersimpan ✓", "ok");
     clearForm(); loadPosts();
@@ -221,11 +342,9 @@ $("#btn-save").addEventListener("click", async ()=>{
   finally { btn.disabled = false; }
 });
 $("#btn-clear").addEventListener("click", clearForm);
-function clearForm() {
-  $("#text").value=""; $("#sched").value=""; uploads=[]; renderThumbs(); updateCount();
-}
+function clearForm() { $("#text").value=""; $("#sched").value=""; $("#gen-topic").value=""; uploads=[]; renderThumbs(); updateCount(); }
 
-// ── list ──
+// ── list queue ──
 $("#filters").addEventListener("click", e=>{
   if (e.target.tagName!=="BUTTON") return;
   curFilter = e.target.dataset.f;
@@ -244,46 +363,136 @@ function renderPost(p) {
   const imgs = (p.media||[]).map(m=>`<img src="${m.public_url}" title="part #${m.part_index}">`).join("");
   const when = p.scheduled_at ? new Date(p.scheduled_at).toLocaleString("id-ID") : "";
   const posted = p.posted_at ? new Date(p.posted_at).toLocaleString("id-ID") : "";
-  return `<div class="post">
-    <div class="top">
-      <span class="handle">@${p.handle}</span>
-      <span class="st ${p.status}">${p.status}</span>
-    </div>
+  return `<div class="post"><div class="top">
+      <span class="handle">@${p.handle}</span><span class="st ${p.status}">${p.status}</span></div>
     <div class="txt">${esc(p.text)}</div>
     ${imgs?`<div class="mini-img">${imgs}</div>`:""}
-    <div class="meta">
-      ${when?`⏰ ${when}`:""} ${posted?`✅ ${posted}`:""}
-      ${p.error?`<br>⚠ ${esc(p.error)}`:""}
-    </div>
+    <div class="meta">${when?`⏰ ${when}`:""} ${posted?`✅ ${posted}`:""}${p.error?`<br>⚠ ${esc(p.error)}`:""}</div>
     <div class="actions">
       ${p.status!=="posted"?`<button class="sm" onclick="pub('${p.id}')">Post sekarang</button>`:""}
-      <button class="sm danger" onclick="del('${p.id}')">Hapus</button>
-    </div>
-  </div>`;
+      <button class="sm danger" onclick="del('${p.id}')">Hapus</button></div></div>`;
 }
 function esc(s){ return (s||"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-
 window.pub = async id => {
   if (!confirm("Post sekarang ke Threads?")) return;
   toast("posting...");
-  try { await api("/api/post/publish", { method:"POST",
-    headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
+  try { await api("/api/post/publish", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
     toast("terkirim ✓","ok"); loadPosts();
   } catch(e){ toast("gagal: "+e.message,"err"); loadPosts(); }
 };
 window.del = async id => {
   if (!confirm("Hapus post ini?")) return;
-  try { await api("/api/post/delete", { method:"POST",
-    headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
+  try { await api("/api/post/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
     toast("dihapus","ok"); loadPosts();
   } catch(e){ toast("gagal: "+e.message,"err"); }
 };
 
+// ── PERSONA ──
+async function loadPersonas() {
+  try {
+    const ps = await api("/api/personas");
+    const el = $("#persona-list");
+    if (!ps.length){ el.innerHTML='<div class="empty">belum ada persona</div>'; return; }
+    el.innerHTML = ps.map(p=>`<div class="persona-item">
+      <div class="row" style="justify-content:space-between">
+        <span class="pn">${esc(p.name)} <span class="tag">@${p.handle}</span> ${p.is_default?'<span class="tag def">default</span>':''}</span>
+      </div>
+      <div class="pd">${esc(p.description||"")}</div>
+      ${p.learned_style?`<div class="pstyle">📚 gaya dipelajari:\n${esc(p.learned_style)}</div>`:'<div class="pd" style="color:var(--warn)">belum belajar gaya</div>'}
+      <div class="actions" style="display:flex; gap:7px; margin-top:9px">
+        <button class="sm ghost" onclick="editPersona(${p.id})">Edit</button>
+        <button class="sm danger" onclick="delPersona(${p.id})">Hapus</button>
+      </div></div>`).join("");
+  } catch(e){ $("#persona-list").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
+}
+window.editPersona = async id => {
+  const p = await api("/api/persona?id="+id);
+  $("#p-id").value=p.id; $("#p-handle").value=p.handle; $("#p-name").value=p.name;
+  $("#p-desc").value=p.description||""; $("#p-lang").value=p.lang||"id";
+  $("#p-sys").value=p.system_prompt||""; $("#p-urls").value=(p.reference_urls||[]).join("\n");
+  $("#p-default").checked=!!p.is_default; $("#pf-title").textContent="Edit Persona";
+  $("#learn-status").textContent=""; window.scrollTo(0,0);
+};
+window.delPersona = async id => {
+  if (!confirm("Hapus persona ini?")) return;
+  await api("/api/persona/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
+  toast("dihapus","ok"); loadPersonas();
+};
+$("#btn-pnew").addEventListener("click", ()=>{
+  $("#p-id").value=""; $("#p-name").value=""; $("#p-desc").value="";
+  $("#p-sys").value=""; $("#p-urls").value=""; $("#p-default").checked=false;
+  $("#pf-title").textContent="Buat Persona"; $("#learn-status").textContent="";
+});
+function personaPayload() {
+  const urls = $("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const p = { handle:$("#p-handle").value, name:$("#p-name").value.trim(),
+    description:$("#p-desc").value.trim(), system_prompt:$("#p-sys").value.trim(),
+    lang:$("#p-lang").value, reference_urls:urls, is_default:$("#p-default").checked };
+  if ($("#p-id").value) p.id = parseInt($("#p-id").value);
+  return p;
+}
+$("#btn-psave").addEventListener("click", async ()=>{
+  const p = personaPayload();
+  if (!p.name) return toast("isi nama persona","err");
+  try {
+    const j = await api("/api/persona/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
+    $("#p-id").value = j.id; $("#pf-title").textContent="Edit Persona";
+    toast("persona tersimpan ✓","ok"); loadPersonas(); loadGenPersonas();
+  } catch(e){ toast("gagal: "+e.message,"err"); }
+});
+$("#btn-plearn").addEventListener("click", async ()=>{
+  let pid = $("#p-id").value;
+  if (!pid) {  // save dulu biar ada id
+    const p = personaPayload();
+    if (!p.name) return toast("isi nama & simpan dulu","err");
+    try { const j = await api("/api/persona/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
+      pid = j.id; $("#p-id").value=pid; } catch(e){ return toast("gagal simpan: "+e.message,"err"); }
+  }
+  const urls = $("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const btn = $("#btn-plearn"); const old=btn.innerHTML;
+  btn.disabled=true; btn.innerHTML='<span class="spin"></span> belajar...';
+  $("#learn-status").textContent="fetch link + analisis gaya (bisa 20-40 detik)...";
+  try {
+    const j = await api("/api/persona/learn", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:parseInt(pid), reference_urls:urls}) });
+    $("#learn-status").innerHTML = `✅ belajar dari ${j.samples_found} post. Gaya:<br><em>${esc(j.learned_style.slice(0,200))}...</em>`;
+    toast("gaya dipelajari ✓","ok"); loadPersonas();
+  } catch(e){ $("#learn-status").textContent="⚠ "+e.message; toast("gagal belajar: "+e.message,"err"); }
+  finally { btn.disabled=false; btn.innerHTML=old; }
+});
+
+// ── INSIGHT ──
+$("#btn-insload").addEventListener("click", async ()=>{
+  const handle = $("#ins-handle").value;
+  const el = $("#insight-list");
+  el.innerHTML='<div class="empty"><span class="spin"></span> muat post...</div>';
+  try {
+    const posts = await api(`/api/live_posts?handle=${handle}&limit=15`);
+    if (!posts.length){ el.innerHTML='<div class="empty">belum ada post terkirim</div>'; return; }
+    el.innerHTML = posts.map(p=>`<div class="post" id="ins-${p.id}">
+      <div class="top"><span class="handle">${p.is_reply?'↳ reply':p.media_type}</span>
+        <span class="meta">${p.timestamp?new Date(p.timestamp).toLocaleString("id-ID"):""}</span></div>
+      <div class="txt">${esc(p.text)}</div>
+      <div class="actions"><button class="sm ghost" onclick="loadIns('${handle}','${p.id}')">Lihat metrik</button>
+        ${p.permalink?`<a href="${p.permalink}" target="_blank"><button class="sm ghost">Buka</button></a>`:""}</div>
+      <div class="ins-box"></div></div>`).join("");
+  } catch(e){ el.innerHTML=`<div class="empty">error: ${e.message}</div>`; }
+});
+window.loadIns = async (handle, pid) => {
+  const box = $(`#ins-${pid} .ins-box`);
+  box.innerHTML='<div class="hint"><span class="spin"></span> ambil metrik...</div>';
+  try {
+    const m = await api(`/api/insight?handle=${handle}&post_id=${pid}`);
+    if (m.error){ box.innerHTML=`<div class="hint" style="color:var(--err)">${esc(m.error)}</div>`; return; }
+    box.innerHTML = `<div class="ins">` + ["views","likes","replies","reposts","quotes"].map(k=>
+      `<div class="box"><div class="n">${m[k]??0}</div><div class="l">${k}</div></div>`).join("") + `</div>`;
+  } catch(e){ box.innerHTML=`<div class="hint" style="color:var(--err)">${e.message}</div>`; }
+};
+
 // ── init ──
 (async()=>{
-  try { await loadAccounts(); } catch(e){ toast("gagal load akun: "+e.message,"err"); }
+  try { await loadAccounts(); await loadGenPersonas(); } catch(e){ toast("gagal load akun: "+e.message,"err"); }
   updateCount(); loadPosts();
-  setInterval(loadPosts, 20000); // auto-refresh
+  setInterval(()=>{ if($("#tab-compose").classList.contains("on")) loadPosts(); }, 20000);
 })();
 </script>
 </body>

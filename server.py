@@ -24,7 +24,7 @@ from pathlib import Path
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lib import db, r2, threads_api  # noqa: E402
+from lib import db, r2, threads_api, ai  # noqa: E402
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
@@ -94,6 +94,18 @@ class H(BaseHTTPRequestHandler):
                 return self._json(db.list_library())
             if path == "/api/limit":
                 return self._json(threads_api.publishing_limit(q.get("handle", [""])[0]))
+            if path == "/api/live_posts":
+                return self._json(threads_api.list_live_posts(
+                    q.get("handle", [""])[0],
+                    int(q.get("limit", ["25"])[0])))
+            if path == "/api/insight":
+                return self._json(threads_api.post_insight(
+                    q.get("handle", [""])[0], q.get("post_id", [""])[0]))
+            if path == "/api/personas":
+                return self._json(db.list_personas(q.get("handle", [None])[0]))
+            if path == "/api/persona":
+                p = db.get_persona(int(q.get("id", ["0"])[0]))
+                return self._json(p or {"error": "not found"}, 200 if p else 404)
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)
@@ -140,6 +152,52 @@ class H(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if path == "/api/post/publish":
                 return self._publish_now(body["id"])
+            if path == "/api/refresh":
+                return self._json(threads_api.refresh_token(body.get("handle", "")))
+            # ── personas ──
+            if path == "/api/persona/save":
+                pid = db.save_persona(
+                    handle=body["handle"], name=body["name"],
+                    description=body.get("description"),
+                    system_prompt=body.get("system_prompt"),
+                    lang=body.get("lang", "id"),
+                    reference_urls=body.get("reference_urls", []),
+                    sample_posts=body.get("sample_posts", []),
+                    is_default=1 if body.get("is_default") else 0,
+                    pid=body.get("id"))
+                return self._json({"ok": True, "id": pid})
+            if path == "/api/persona/delete":
+                db.delete_persona(int(body["id"]))
+                return self._json({"ok": True})
+            if path == "/api/persona/learn":
+                # fetch link → analisis gaya → simpan ke persona
+                pid = int(body["id"])
+                persona = db.get_persona(pid)
+                if not persona:
+                    return self._json({"error": "persona not found"}, 404)
+                urls = body.get("reference_urls") or persona.get("reference_urls", [])
+                texts = ai.fetch_thread_texts(urls, handle=persona["handle"])
+                if not texts:
+                    return self._json({"error": "gak ada teks kebaca dari link/akun"}, 400)
+                style = ai.learn_style(texts, lang=persona.get("lang", "id"))
+                db.update_persona_style(pid, style)
+                return self._json({"ok": True, "learned_style": style,
+                                   "samples_found": len(texts)})
+            if path == "/api/generate":
+                persona = {}
+                if body.get("persona_id"):
+                    persona = db.get_persona(int(body["persona_id"])) or {}
+                else:
+                    persona = {
+                        "system_prompt": body.get("system_prompt", ""),
+                        "learned_style": body.get("learned_style", ""),
+                        "sample_posts": body.get("sample_posts", []),
+                        "lang": body.get("lang", "id"),
+                    }
+                text = ai.generate(body["topic"], persona,
+                                   num_parts=int(body.get("num_parts", 1)),
+                                   lang=body.get("lang"))
+                return self._json({"ok": True, "text": text})
             return self._json({"error": "not found"}, 404)
         except Exception as e:
             return self._json({"error": str(e)}, 500)

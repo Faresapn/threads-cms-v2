@@ -11,8 +11,22 @@ schedule, dan auto-post lewat scheduler. Data di SQLite (bukan JSON lagi).
 |---|---|---|
 | Storage | `queue.json` file | SQLite (`db/cms.db`) |
 | Image | manual URL | drag-drop → auto-upload R2 → CDN |
-| UI | basic | dashboard dark, filter, thumbnail, char/part counter |
+| UI | basic | dashboard dark, tab, filter, thumbnail, char/part counter |
 | Media | — | media library (reusable) + attach per part |
+| **AI generate** | — | generate thread pakai persona (9Router lokal) |
+| **Persona** | — | per akun, belajar gaya dari link Threads |
+| Insight/analytics | ✓ | ✓ (diport) |
+| OAuth/refresh token | ✓ | ✓ (diport) |
+
+## AI Generate (fitur baru)
+
+- Pakai **9Router lokal** (`localhost:20128`, OpenAI-compatible) — model yg lagi
+  jalan (default `cc/claude-sonnet-5`). Config di `.env` (`AI_BASE_URL`,
+  `AI_API_KEY`, `AI_MODEL`).
+- **Persona per akun**: nama, instruksi gaya, bahasa, + link Threads referensi.
+- **Belajar gaya**: fetch post dari link (Graph API kalau akun sendiri, fallback
+  scrape `og:description`) → AI rangkum ciri gaya → disimpan → dipakai pas generate.
+- Aturan playbook auto: NO em-dash, soft-sell (link di reply bukan thread).
 
 ## Arsitektur
 

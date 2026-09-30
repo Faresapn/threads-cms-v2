@@ -24,6 +24,9 @@ def connect():
 def init_db():
     con = connect()
     con.executescript(SCHEMA.read_text())
+    v2 = BASE / "db" / "schema_v2.sql"
+    if v2.exists():
+        con.executescript(v2.read_text())
     con.commit()
     con.close()
 
@@ -202,6 +205,80 @@ def list_library(limit=100):
     ).fetchall()
     con.close()
     return [dict(r) for r in rows]
+
+
+# ── personas ────────────────────────────────────────────────────────────
+def list_personas(handle=None):
+    con = connect()
+    if handle:
+        rows = con.execute(
+            "SELECT * FROM personas WHERE handle=? ORDER BY is_default DESC, name",
+            (handle,)).fetchall()
+    else:
+        rows = con.execute(
+            "SELECT * FROM personas ORDER BY handle, is_default DESC, name").fetchall()
+    con.close()
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["reference_urls"] = json.loads(d["reference_urls"]) if d["reference_urls"] else []
+        d["sample_posts"] = json.loads(d["sample_posts"]) if d["sample_posts"] else []
+        out.append(d)
+    return out
+
+
+def get_persona(pid):
+    con = connect()
+    r = con.execute("SELECT * FROM personas WHERE id=?", (pid,)).fetchone()
+    con.close()
+    if not r:
+        return None
+    d = dict(r)
+    d["reference_urls"] = json.loads(d["reference_urls"]) if d["reference_urls"] else []
+    d["sample_posts"] = json.loads(d["sample_posts"]) if d["sample_posts"] else []
+    return d
+
+
+def save_persona(handle, name, description=None, system_prompt=None, lang="id",
+                 reference_urls=None, learned_style=None, sample_posts=None,
+                 is_default=0, pid=None):
+    con = connect()
+    ref = json.dumps(reference_urls or [], ensure_ascii=False)
+    samp = json.dumps(sample_posts or [], ensure_ascii=False)
+    if pid:
+        con.execute(
+            """UPDATE personas SET handle=?,name=?,description=?,system_prompt=?,
+               lang=?,reference_urls=?,learned_style=COALESCE(?,learned_style),
+               sample_posts=?,is_default=?,updated_at=? WHERE id=?""",
+            (handle, name, description, system_prompt, lang, ref, learned_style,
+             samp, is_default, now_iso(), pid))
+        out_id = pid
+    else:
+        cur = con.execute(
+            """INSERT INTO personas(handle,name,description,system_prompt,lang,
+               reference_urls,learned_style,sample_posts,is_default,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?,?)""",
+            (handle, name, description, system_prompt, lang, ref, learned_style,
+             samp, is_default, now_iso()))
+        out_id = cur.lastrowid
+    if is_default:  # unset default lain di akun sama
+        con.execute("UPDATE personas SET is_default=0 WHERE handle=? AND id!=?",
+                    (handle, out_id))
+    con.commit(); con.close()
+    return out_id
+
+
+def update_persona_style(pid, learned_style):
+    con = connect()
+    con.execute("UPDATE personas SET learned_style=?, updated_at=? WHERE id=?",
+                (learned_style, now_iso(), pid))
+    con.commit(); con.close()
+
+
+def delete_persona(pid):
+    con = connect()
+    con.execute("DELETE FROM personas WHERE id=?", (pid,))
+    con.commit(); con.close()
 
 
 if __name__ == "__main__":
