@@ -16,15 +16,15 @@
     </div>
 
     <div class="nav-section">Menu</div>
-    <div class="nav-item on" data-page="dashboard"><span class="ico">▦</span> Dashboard</div>
-    <div class="nav-item" data-page="analytics"><span class="ico">📊</span> Analytics</div>
-    <div class="nav-item" data-page="compose"><span class="ico">✎</span> Compose</div>
-    <div class="nav-item" data-page="autopost"><span class="ico">⚡</span> Auto-Post</div>
-    <div class="nav-item" data-page="persona"><span class="ico">🎭</span> Persona AI</div>
+    <div class="nav-item on" data-page="dashboard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg></span> Dashboard</div>
+    <div class="nav-item" data-page="analytics"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg></span> Analytics</div>
+    <div class="nav-item" data-page="compose"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span> Compose</div>
+    <div class="nav-item" data-page="autopost"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg></span> Auto-Post</div>
+    <div class="nav-item" data-page="persona"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2"/></svg></span> Persona AI</div>
 
     <div class="nav-section">Akun</div>
     <div id="side-accounts"></div>
-    <div class="nav-item" data-page="akun"><span class="ico">＋</span> Kelola Akun</div>
+    <div class="nav-item" data-page="akun"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></span> Kelola Akun</div>
 
     <div class="sidebar-foot">
       <div class="nav-item" id="side-status"><span class="ico">●</span> <span id="status-txt">online</span></div>
@@ -104,10 +104,10 @@
             <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:14px;">
               <strong style="font-size:12px; color:var(--ai)">✨ AI Generate</strong>
               <label>Persona</label>
-              <select id="gen-persona"><option value="">— tanpa persona —</option></select>
+              <select id="gen-persona"><option value="">tanpa persona</option></select>
               <label>Topik / ide</label>
               <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
-              <label>Arahan tambahan — opsional</label>
+              <label>Arahan tambahan (opsional)</label>
               <textarea id="gen-brief" class="sm" placeholder="mis: tone lebih personal, ceritain pengalaman"></textarea>
               <div class="row" style="margin-top:10px">
                 <label style="margin:0">Part</label>
@@ -122,11 +122,11 @@
               <strong style="font-size:12px; color:var(--gold)">🔗 Soft-sell (opsional)</strong>
               <label>Link produk (kosong = storytelling biasa)</label>
               <input type="text" id="ss-link" placeholder="https://promptedsite.com/...">
-              <label>Teks reply sebelum link — opsional</label>
+              <label>Teks reply sebelum link (opsional)</label>
               <input type="text" id="ss-text" placeholder="cek koleksi lengkapnya 👇">
             </div>
             <label>Gambar (drag & drop / klik)</label>
-            <div class="drop" id="drop">Seret foto ke sini atau klik<br><span style="font-size:11px">auto-upload R2</span></div>
+            <div class="drop" id="drop">Seret foto ke sini atau klik<br><span style="font-size:11px">langsung ke storage</span></div>
             <input type="file" id="file" accept="image/*" multiple hidden>
             <div class="thumbs" id="thumbs"></div>
             <label>Jadwal (kosong = draft)</label>
@@ -159,14 +159,14 @@
             <h2>Config Auto Random-Post</h2>
             <div class="row" style="justify-content:space-between; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:12px;">
               <div><strong style="font-size:14px" id="ap-state-label">OFF</strong>
-                <div class="hint" style="margin:0">Auto-generate + jadwal tiap hari</div></div>
+                <div class="hint" style="margin:0">Bikin utas + jadwalin otomatis tiap hari</div></div>
               <button id="ap-toggle" class="ghost">Toggle ON/OFF</button>
             </div>
             <label>Bahasa</label>
             <select id="ap-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
             <label>Niche (1 per baris)</label>
             <textarea id="ap-niches" class="sm" placeholder="AI tools&#10;Side Hustle&#10;Self Improvement"></textarea>
-            <label>Link referensi gaya (1 per baris) — opsional</label>
+            <label>Link referensi gaya (1 per baris) (opsional)</label>
             <textarea id="ap-styleurls" class="sm" placeholder="https://www.threads.net/@user/post/xxx"></textarea>
             <label>Panduan gaya (bisa diedit)</label>
             <textarea id="ap-guide" style="min-height:110px"></textarea>
@@ -178,7 +178,7 @@
             <label>Jam terbaik (WIB, pisah koma)</label>
             <input type="text" id="ap-hours" placeholder="8, 12, 18, 21">
             <label>Persona (opsional)</label>
-            <select id="ap-persona"><option value="">— tanpa persona —</option></select>
+            <select id="ap-persona"><option value="">tanpa persona</option></select>
             <div class="row" style="margin-top:16px">
               <button id="ap-save">Simpan Config</button>
               <button class="ai" id="ap-preview">✨ Preview</button>
@@ -235,7 +235,7 @@
               <button id="acc-oauth">🔗 Connect Akun Baru</button>
               <div class="hint" id="oauth-status" style="margin-top:8px"></div>
             </div>
-            <div style="text-align:center; color:var(--muted); font-size:12px; margin:10px 0">— atau paste token manual —</div>
+            <div style="text-align:center; color:var(--muted); font-size:12px; margin:10px 0">atau tempel token manual</div>
             <label>Access Token dari Meta</label>
             <textarea id="acc-token" class="sm" placeholder="Paste token dari Meta"></textarea>
             <label class="row" style="margin-top:10px"><input type="checkbox" id="acc-exchange" checked style="width:auto; margin-right:7px"> Exchange long-lived (60 hari)</label>

@@ -9,19 +9,30 @@ function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">"
 function fmtNum(n){ n=n||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return ''+n; }
 function curAccount(){ return $("#global-account").value; }
 
+// ── SVG icons (monoline, Lucide-style) ──
+const ICO = {
+  eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.5-1.5 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4 3 5.5l7 7Z"/></svg>',
+  chat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/></svg>',
+  repeat:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>',
+  quote:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21c3 0 7-1 7-8V5a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h4"/><path d="M13 21c3 0 7-1 7-8V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h4"/></svg>',
+};
+
 // ── THEME ──
+const MOON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+const SUN='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
 function initTheme(){
   const saved = localStorage.getItem("cms-theme") || "dark";
   document.documentElement.setAttribute("data-theme", saved);
-  $("#theme-btn").textContent = saved==="dark" ? "🌙" : "☀️";
+  $("#theme-btn").innerHTML = saved==="dark" ? MOON : SUN;
 }
 $("#theme-btn").addEventListener("click", ()=>{
   const cur = document.documentElement.getAttribute("data-theme");
   const next = cur==="dark" ? "light" : "dark";
   document.documentElement.setAttribute("data-theme", next);
   localStorage.setItem("cms-theme", next);
-  $("#theme-btn").textContent = next==="dark" ? "🌙" : "☀️";
-  if(curPage==="dashboard") loadDashboard();  // repaint chart warna
+  $("#theme-btn").innerHTML = next==="dark" ? MOON : SUN;
+  if(curPage==="dashboard") loadDashboard();
 });
 
 // ── NAV ──
@@ -90,10 +101,10 @@ async function loadDashboard(){
 }
 function statCards(t, loading){
   const cards = [
-    {ico:"👁", val:t.views, lbl:"Total Views"},
-    {ico:"❤️", val:t.likes, lbl:"Total Likes"},
-    {ico:"💬", val:t.replies, lbl:"Total Replies"},
-    {ico:"🔁", val:t.reposts, lbl:"Total Reposts"},
+    {ico:ICO.eye, val:t.views, lbl:"Total Views"},
+    {ico:ICO.heart, val:t.likes, lbl:"Total Likes"},
+    {ico:ICO.chat, val:t.replies, lbl:"Total Replies"},
+    {ico:ICO.repeat, val:t.reposts, lbl:"Total Reposts"},
   ];
   return cards.map(c=>`<div class="stat">
     <div class="ico">${c.ico}</div>
@@ -126,24 +137,37 @@ async function loadUpcoming(h){
   } catch(e){ $("#dash-upcoming").innerHTML='<div class="empty">—</div>'; }
 }
 
-// ── CHART (SVG area) ──
+// ── CHART (SVG area, gridlines + axis) ──
 function renderChart(sel, posts, key){
   const el = $(sel);
   const data = (posts||[]).map(p=>p[key]||0).reverse();
-  if(!data.length || data.every(v=>v===0)){ el.innerHTML='<div class="empty">belum ada data '+key+'<br><span class="hint">metrik muncul beberapa jam setelah post</span></div>'; return; }
-  const w=600,h=200,pad=10;
+  if(!data.length || data.every(v=>v===0)){
+    el.innerHTML='<div class="empty" style="padding:60px 20px">Belum ada data '+key+'<br><span class="hint">metrik muncul beberapa jam setelah post tayang</span></div>';
+    return;
+  }
+  const w=600,h=200,padL=38,padR=10,padT=12,padB=22;
   const max=Math.max(...data,1);
-  const step = data.length>1 ? (w-pad*2)/(data.length-1) : 0;
-  const pts = data.map((v,i)=>[pad+i*step, h-pad-(v/max)*(h-pad*2)]);
+  const iw=w-padL-padR, ih=h-padT-padB;
+  const step = data.length>1 ? iw/(data.length-1) : 0;
+  const pts = data.map((v,i)=>[padL+i*step, padT+ih-(v/max)*ih]);
   const line = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const area = line+` L${pad+(data.length-1)*step} ${h-pad} L${pad} ${h-pad} Z`;
-  el.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+  const area = line+` L${(padL+(data.length-1)*step).toFixed(1)} ${padT+ih} L${padL} ${padT+ih} Z`;
+  // gridlines (4 levels)
+  let grid='', ylab='';
+  for(let g=0; g<=3; g++){
+    const y = padT + (ih/3)*g;
+    const val = Math.round(max - (max/3)*g);
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="var(--chart-grid)" stroke-width="1"/>`;
+    ylab += `<text x="${padL-8}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--faint)" font-family="var(--mono)">${fmtNum(val)}</text>`;
+  }
+  el.innerHTML = `<svg class="chart" viewBox="0 0 ${w} ${h}">
     <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/>
+      <stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/>
       <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    ${grid}${ylab}
     <path d="${area}" fill="url(#ag)"/>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
-    ${pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="var(--accent)"/>`).join('')}
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5"/>`).join('')}
   </svg>`;
 }
 // ── DONUT (SVG) ──
