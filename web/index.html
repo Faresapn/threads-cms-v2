@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads CMS v2</title>
+<style>
+  :root {
+    --bg:#0a0a0b; --surface:#141416; --surface2:#1c1c20; --border:#2a2a30;
+    --fg:#e8e8ea; --muted:#8a8a93; --accent:#5b8cff; --accent2:#4a7aef;
+    --ok:#3ecf8e; --warn:#f5a623; --err:#ff5c5c; --gold:#e6c068;
+    --radius:14px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--fg); line-height:1.5; font-size:14px;
+  }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px 18px 80px; }
+  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+  header h1 { font-size:20px; font-weight:700; letter-spacing:-.02em; }
+  header h1 span { color:var(--accent); }
+  .badge { font-size:11px; color:var(--muted); font-family:ui-monospace,monospace;
+    background:var(--surface2); padding:3px 8px; border-radius:20px; border:1px solid var(--border); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media(max-width:820px){ .grid{ grid-template-columns:1fr; } }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px; font-weight:600; }
+  label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px; }
+  select, input[type=text], input[type=datetime-local], textarea {
+    width:100%; background:var(--surface2); border:1px solid var(--border);
+    color:var(--fg); border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  textarea { min-height:130px; resize:vertical; line-height:1.55; }
+  select:focus, input:focus, textarea:focus { outline:none; border-color:var(--accent); }
+  .hint { font-size:11px; color:var(--muted); margin-top:5px; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  button {
+    background:var(--accent); color:#fff; border:none; border-radius:10px;
+    padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;
+  }
+  button:hover { background:var(--accent2); }
+  button.ghost { background:transparent; border:1px solid var(--border); color:var(--fg); }
+  button.ghost:hover { background:var(--surface2); }
+  button.danger { background:transparent; border:1px solid var(--err); color:var(--err); }
+  button.danger:hover { background:rgba(255,92,92,.1); }
+  button.sm { padding:6px 11px; font-size:12px; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .drop {
+    border:2px dashed var(--border); border-radius:12px; padding:22px; text-align:center;
+    color:var(--muted); cursor:pointer; transition:.15s; font-size:13px;
+  }
+  .drop.over { border-color:var(--accent); background:rgba(91,140,255,.06); color:var(--fg); }
+  .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+  .thumb { position:relative; width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid var(--border); }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .thumb .x { position:absolute; top:2px; right:2px; background:rgba(0,0,0,.7); color:#fff;
+    border-radius:50%; width:20px; height:20px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+  .thumb .idx { position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,.7); color:#fff;
+    font-size:10px; padding:1px 5px; border-radius:6px; font-family:ui-monospace,monospace; }
+  .post { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .post .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .post .handle { font-weight:600; color:var(--accent); font-size:13px; }
+  .post .txt { white-space:pre-wrap; font-size:13px; color:var(--fg); max-height:120px; overflow:auto; }
+  .post .meta { font-size:11px; color:var(--muted); margin-top:8px; font-family:ui-monospace,monospace; }
+  .post .actions { display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
+  .st { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:3px 8px; border-radius:20px; font-weight:700; }
+  .st.draft{ background:#33333a; color:var(--muted); }
+  .st.scheduled{ background:rgba(245,166,35,.15); color:var(--warn); }
+  .st.posting{ background:rgba(91,140,255,.15); color:var(--accent); }
+  .st.posted{ background:rgba(62,207,142,.15); color:var(--ok); }
+  .st.failed{ background:rgba(255,92,92,.15); color:var(--err); }
+  .filters { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .filters button { background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:6px 13px; font-size:12px; font-weight:500; }
+  .filters button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .mini-img { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .mini-img img { width:46px; height:46px; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
+  #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    background:var(--surface2); border:1px solid var(--border); padding:11px 18px;
+    border-radius:12px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:99; }
+  #toast.show { opacity:1; }
+  #toast.err { border-color:var(--err); color:var(--err); }
+  #toast.ok { border-color:var(--ok); color:var(--ok); }
+  .empty { text-align:center; color:var(--muted); padding:30px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Threads <span>CMS</span> v2</h1>
+    <span class="badge" id="acc-badge">loading...</span>
+  </header>
+
+  <div class="grid">
+    <!-- COMPOSE -->
+    <div class="card">
+      <h2>Compose</h2>
+      <label>Akun</label>
+      <select id="handle"></select>
+
+      <label>Teks (pisah part chain pakai <code>---</code> di baris sendiri)</label>
+      <textarea id="text" placeholder="Tulis thread di sini...&#10;&#10;---&#10;&#10;Part kedua (auto jadi reply)"></textarea>
+      <div class="hint" id="charc">0 karakter · 1 part</div>
+
+      <label>Gambar (drag &amp; drop / klik) — gambar ke-N nempel di part ke-N</label>
+      <div class="drop" id="drop">Seret foto ke sini atau klik buat pilih<br><span style="font-size:11px">upload otomatis ke R2</span></div>
+      <input type="file" id="file" accept="image/*" multiple hidden>
+      <div class="thumbs" id="thumbs"></div>
+
+      <label>Jadwal (kosongkan = simpan draft)</label>
+      <input type="datetime-local" id="sched">
+
+      <div class="row" style="margin-top:16px">
+        <button id="btn-save">Simpan</button>
+        <button class="ghost" id="btn-clear">Reset</button>
+      </div>
+    </div>
+
+    <!-- QUEUE -->
+    <div class="card">
+      <h2>Queue &amp; Riwayat</h2>
+      <div class="filters" id="filters">
+        <button data-f="" class="on">Semua</button>
+        <button data-f="draft">Draft</button>
+        <button data-f="scheduled">Terjadwal</button>
+        <button data-f="posted">Terkirim</button>
+        <button data-f="failed">Gagal</button>
+      </div>
+      <div id="list"><div class="empty">memuat...</div></div>
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let uploads = [];      // {r2_key, public_url, filename}
+let curFilter = "";
+
+function toast(msg, kind="") {
+  const t = $("#toast"); t.textContent = msg; t.className = "show " + kind;
+  setTimeout(()=> t.className = "", 2600);
+}
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
+  return j;
+}
+
+// ── accounts ──
+async function loadAccounts() {
+  const accs = await api("/api/accounts");
+  const sel = $("#handle");
+  sel.innerHTML = accs.map(a => `<option value="${a.handle}">@${a.handle}</option>`).join("");
+  $("#acc-badge").textContent = accs.length + " akun · :8455";
+}
+
+// ── char counter ──
+function updateCount() {
+  const t = $("#text").value;
+  const parts = t.split(/\n\s*---\s*\n/).filter(p=>p.trim()).length || 1;
+  $("#charc").textContent = `${t.length} karakter · ${parts} part`;
+}
+$("#text").addEventListener("input", updateCount);
+
+// ── upload ──
+const drop = $("#drop"), fileInput = $("#file");
+drop.addEventListener("click", ()=> fileInput.click());
+drop.addEventListener("dragover", e=>{ e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", ()=> drop.classList.remove("over"));
+drop.addEventListener("drop", e=>{ e.preventDefault(); drop.classList.remove("over"); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener("change", ()=> handleFiles(fileInput.files));
+
+async function handleFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) { toast("bukan gambar: "+f.name, "err"); continue; }
+    const fd = new FormData(); fd.append("file", f);
+    toast("upload "+f.name+"...");
+    try {
+      const j = await api("/api/upload", { method:"POST", body:fd });
+      uploads.push({ r2_key:j.r2_key, public_url:j.public_url, filename:j.filename });
+      renderThumbs(); toast("uploaded ✓", "ok");
+    } catch(e){ toast("gagal upload: "+e.message, "err"); }
+  }
+}
+function renderThumbs() {
+  $("#thumbs").innerHTML = uploads.map((u,i)=>`
+    <div class="thumb">
+      <img src="${u.public_url}" alt="">
+      <div class="idx">#${i}</div>
+      <div class="x" onclick="rmUpload(${i})">×</div>
+    </div>`).join("");
+}
+window.rmUpload = i => { uploads.splice(i,1); renderThumbs(); };
+
+// ── save post ──
+$("#btn-save").addEventListener("click", async ()=>{
+  const handle = $("#handle").value;
+  const text = $("#text").value.trim();
+  if (!handle) return toast("pilih akun", "err");
+  if (!text) return toast("teks kosong", "err");
+  const schedRaw = $("#sched").value;
+  const btn = $("#btn-save"); btn.disabled = true;
+  try {
+    const payload = { handle, text };
+    if (schedRaw) payload.scheduled_at = schedRaw;
+    const j = await api("/api/post", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+    // attach images per part_index
+    for (let i=0;i<uploads.length;i++){
+      await api("/api/post/attach", { method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ id:j.id, part_index:i,
+          r2_key:uploads[i].r2_key, public_url:uploads[i].public_url,
+          filename:uploads[i].filename }) });
+    }
+    toast(schedRaw ? "terjadwal ✓" : "draft tersimpan ✓", "ok");
+    clearForm(); loadPosts();
+  } catch(e){ toast("gagal: "+e.message, "err"); }
+  finally { btn.disabled = false; }
+});
+$("#btn-clear").addEventListener("click", clearForm);
+function clearForm() {
+  $("#text").value=""; $("#sched").value=""; uploads=[]; renderThumbs(); updateCount();
+}
+
+// ── list ──
+$("#filters").addEventListener("click", e=>{
+  if (e.target.tagName!=="BUTTON") return;
+  curFilter = e.target.dataset.f;
+  document.querySelectorAll("#filters button").forEach(b=>b.classList.toggle("on", b===e.target));
+  loadPosts();
+});
+async function loadPosts() {
+  try {
+    const posts = await api("/api/posts" + (curFilter?`?status=${curFilter}`:""));
+    const el = $("#list");
+    if (!posts.length){ el.innerHTML = '<div class="empty">belum ada post</div>'; return; }
+    el.innerHTML = posts.map(renderPost).join("");
+  } catch(e){ $("#list").innerHTML = `<div class="empty">error: ${e.message}</div>`; }
+}
+function renderPost(p) {
+  const imgs = (p.media||[]).map(m=>`<img src="${m.public_url}" title="part #${m.part_index}">`).join("");
+  const when = p.scheduled_at ? new Date(p.scheduled_at).toLocaleString("id-ID") : "";
+  const posted = p.posted_at ? new Date(p.posted_at).toLocaleString("id-ID") : "";
+  return `<div class="post">
+    <div class="top">
+      <span class="handle">@${p.handle}</span>
+      <span class="st ${p.status}">${p.status}</span>
+    </div>
+    <div class="txt">${esc(p.text)}</div>
+    ${imgs?`<div class="mini-img">${imgs}</div>`:""}
+    <div class="meta">
+      ${when?`⏰ ${when}`:""} ${posted?`✅ ${posted}`:""}
+      ${p.error?`<br>⚠ ${esc(p.error)}`:""}
+    </div>
+    <div class="actions">
+      ${p.status!=="posted"?`<button class="sm" onclick="pub('${p.id}')">Post sekarang</button>`:""}
+      <button class="sm danger" onclick="del('${p.id}')">Hapus</button>
+    </div>
+  </div>`;
+}
+function esc(s){ return (s||"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+
+window.pub = async id => {
+  if (!confirm("Post sekarang ke Threads?")) return;
+  toast("posting...");
+  try { await api("/api/post/publish", { method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
+    toast("terkirim ✓","ok"); loadPosts();
+  } catch(e){ toast("gagal: "+e.message,"err"); loadPosts(); }
+};
+window.del = async id => {
+  if (!confirm("Hapus post ini?")) return;
+  try { await api("/api/post/delete", { method:"POST",
+    headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
+    toast("dihapus","ok"); loadPosts();
+  } catch(e){ toast("gagal: "+e.message,"err"); }
+};
+
+// ── init ──
+(async()=>{
+  try { await loadAccounts(); } catch(e){ toast("gagal load akun: "+e.message,"err"); }
+  updateCount(); loadPosts();
+  setInterval(loadPosts, 20000); // auto-refresh
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.env
+db/cms.db
+db/cms.db-wal
+db/cms.db-shm
+__pycache__/
+*.pyc
+.DS_Store
+tls-*.pem
+.env.local
