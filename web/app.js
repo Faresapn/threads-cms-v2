@@ -41,12 +41,13 @@ function gotoPage(page){
   $$(".nav-item").forEach(n=>n.classList.toggle("on", n.dataset.page===page));
   $$(".page").forEach(p=>p.classList.remove("on"));
   $("#page-"+page).classList.add("on");
-  $("#crumb-page").textContent = {dashboard:"Dashboard",analytics:"Analytics",compose:"Compose",autopost:"Auto-Post",persona:"Persona AI",akun:"Kelola Akun"}[page]||page;
+  $("#crumb-page").textContent = {dashboard:"Dashboard",analytics:"Analytics",compose:"Compose",autopost:"Auto-Post",persona:"Persona AI",akun:"Kelola Akun",hooks:"Hook Library"}[page]||page;
   if(page==="dashboard") loadDashboard();
   if(page==="compose") loadPosts();
   if(page==="persona") loadPersonas();
   if(page==="autopost") loadAutopost();
   if(page==="akun") loadAkun();
+  if(page==="hooks") loadHooks();
 }
 $$(".nav-item[data-page]").forEach(n=> n.addEventListener("click", ()=>gotoPage(n.dataset.page)));
 
@@ -398,6 +399,52 @@ $("#acc-add").addEventListener("click", async ()=>{
   finally{ btn.disabled=false; btn.innerHTML=old; }
 });
 window.delAkun=async handle=>{ if(!confirm(`Hapus @${handle}?`))return; try{ await api("/api/account/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({handle})}); toast("dihapus","ok"); await loadAccounts(); loadAkun(); }catch(e){ toast("gagal: "+e.message,"err"); } };
+
+// ══════════ HOOK LIBRARY ══════════
+let hookCat = "";
+async function loadHooks(){
+  try {
+    const cats = await api("/api/hooks");
+    window._hookCats = {};
+    cats.forEach(c=> window._hookCats[c.id]=c.name);
+    $("#hook-cats").innerHTML = cats.map(c=>`<div class="persona-item hook-cat" data-cat="${c.id}" style="cursor:pointer">
+      <div class="pn">${esc(c.name)} <span class="tag">${c.count} contoh</span></div>
+      <div class="pd">${esc(c.desc)}</div>
+      <div class="pstyle">${c.examples.map(e=>'• '+esc(e)).join("<br>")}</div>
+    </div>`).join("");
+  } catch(e){ $("#hook-cats").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
+}
+// event delegation: klik di mana aja dalam kartu kategori tetap kepilih
+$("#hook-cats").addEventListener("click", e=>{
+  const card = e.target.closest(".hook-cat");
+  if(!card) return;
+  hookCat = card.dataset.cat;
+  $$(".hook-cat").forEach(x=> x.style.borderColor = x===card ? "var(--accent)" : "");
+  $("#hook-selected").innerHTML = `kategori: <b style="color:var(--accent)">${esc(window._hookCats[hookCat]||hookCat)}</b>`;
+  $("#hook-gen").disabled = false;
+});
+$("#hook-gen").addEventListener("click", async ()=>{
+  if(!hookCat) return toast("pilih kategori dulu","err");
+  const topic = $("#hook-topic").value.trim();
+  if(!topic) return toast("isi topik","err");
+  const btn=$("#hook-gen"),old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> bikin hook...';
+  $("#hook-result").innerHTML='<div class="empty"><span class="spin"></span></div>';
+  try {
+    const j = await api("/api/hooks/generate",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({category:hookCat, topic, lang:$("#hook-lang").value})});
+    const lines = j.text.split("\n").map(l=>l.trim()).filter(l=>l && /\d/.test(l[0]||l));
+    $("#hook-result").innerHTML = `<div class="post"><div class="top"><span class="handle">Hook baru</span><span class="tag auto">AI</span></div>` +
+      lines.map(l=>{ const clean=l.replace(/^\d+[\.\)]\s*/,''); return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-subtle)"><span style="font-size:13px">${esc(clean)}</span><button class="sm ghost" onclick="useHook('${esc(clean).replace(/'/g,"\\'")}')">Pakai</button></div>`; }).join("") +
+      `</div>`;
+    toast("hook digenerate ✓","ok");
+  } catch(e){ $("#hook-result").innerHTML=`<div class="empty">error: ${esc(e.message)}</div>`; toast("gagal: "+e.message,"err"); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+});
+window.useHook = hook => {
+  gotoPage("compose");
+  const t=$("#text"); t.value = hook + "\n\n" + t.value; updateCount();
+  toast("hook dimasukin ke Compose ✓","ok");
+};
 
 // ══════════ INIT ══════════
 (async()=>{

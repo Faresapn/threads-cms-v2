@@ -25,6 +25,7 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib import db, r2, threads_api, ai  # noqa: E402
+from lib import hooks  # noqa: E402
 
 BASE = Path(__file__).resolve().parent
 WEB = BASE / "web"
@@ -192,6 +193,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(threads_api.account_analytics(
                     q.get("handle", [""])[0],
                     int(q.get("limit", ["25"])[0])))
+            if path == "/api/hooks":
+                return self._json(hooks.list_hooks())
             if path == "/api/personas":
                 return self._json(db.list_personas(q.get("handle", [None])[0]))
             if path == "/api/persona":
@@ -340,6 +343,15 @@ class H(BaseHTTPRequestHandler):
                     lang=body.get("lang") or cfg.get("lang", "id"),
                     num_parts=int(body.get("num_parts", 2)), persona=persona)
                 return self._json({"ok": True, "niche": niche, "text": text})
+            if path == "/api/hooks/generate":
+                prompt = hooks.hook_prompt(
+                    body.get("category", ""), body.get("topic", ""),
+                    lang=body.get("lang", "id"))
+                if not prompt:
+                    return self._json({"error": "kategori gak valid"}, 400)
+                out = ai._chat([{"role": "user", "content": prompt}], max_tokens=600)
+                out = out.replace("—", ", ")
+                return self._json({"ok": True, "text": out.strip()})
             # ── akun ──
             if path == "/api/account/add":
                 res = threads_api.add_account(
