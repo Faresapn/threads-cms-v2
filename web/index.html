@@ -559,6 +559,8 @@ async function loadAutopostPersonas() {
 async function loadAutopost() {
   const h = $("#ap-handle").value;
   if (!h) return;
+  // reset preview box tiap ganti akun biar gak nyangkut punya akun lama
+  $("#ap-preview-box").innerHTML = '<div class="empty">Klik "Preview 1 Utas" buat lihat contoh hasil AI</div>';
   await loadAutopostPersonas();
   try {
     const c = await api("/api/autopost?handle="+h);
