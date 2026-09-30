@@ -41,17 +41,57 @@ def account_info(handle, force=False):
 
 
 def parse_parts(text):
-    """Pisah post jadi chain part pakai delimiter '---' di baris sendiri."""
-    parts, buf = [], []
+    """Pisah post jadi chain part pakai delimiter '---' di baris sendiri.
+    Tiap part yg >500 char (limit Threads) di-split otomatis jadi beberapa post,
+    dipotong di batas paragraf/kalimat biar rapi."""
+    raw, buf = [], []
     for line in (text or "").split("\n"):
         if line.strip() == "---":
             if buf:
-                parts.append("\n".join(buf).strip()); buf = []
+                raw.append("\n".join(buf).strip()); buf = []
         else:
             buf.append(line)
     if buf:
-        parts.append("\n".join(buf).strip())
-    return [p for p in parts if p]
+        raw.append("\n".join(buf).strip())
+    raw = [p for p in raw if p]
+    # auto-split part yg kepanjangan
+    out = []
+    for part in raw:
+        out.extend(_split_long(part, 490))
+    return out
+
+
+def _split_long(text, limit=490):
+    """Split teks >limit char jadi beberapa chunk, potong di paragraf/kalimat."""
+    if len(text) <= limit:
+        return [text]
+    chunks, cur = [], ""
+    # coba potong per paragraf dulu
+    for para in text.split("\n\n"):
+        para = para.strip()
+        if not para:
+            continue
+        if len(para) > limit:
+            # paragraf sendiri kepanjangan, potong per kalimat
+            import re as _re
+            sentences = _re.split(r'(?<=[.!?])\s+', para)
+            for s in sentences:
+                if len(cur) + len(s) + 1 <= limit:
+                    cur = (cur + " " + s).strip()
+                else:
+                    if cur:
+                        chunks.append(cur)
+                    cur = s if len(s) <= limit else s[:limit]
+        else:
+            if len(cur) + len(para) + 2 <= limit:
+                cur = (cur + "\n\n" + para).strip()
+            else:
+                if cur:
+                    chunks.append(cur)
+                cur = para
+    if cur:
+        chunks.append(cur)
+    return chunks
 
 
 def post_thread(handle, text, images=None):
