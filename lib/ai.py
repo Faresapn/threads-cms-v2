@@ -173,10 +173,10 @@ def generate(topic, persona, num_parts=1, lang=None, has_link=False, extra_brief
     out = _chat([
         {"role": "system", "content": sys},
         {"role": "user", "content": user_msg}
-    ], max_tokens=1200)
+    ], max_tokens=2200)
     # bersihin em-dash kalau lolos
     out = out.replace("—", ", ").replace(" –", ",")
-    return out.strip()
+    return _trim_incomplete(out.strip())
 
 
 # ── random auto-post (edukasi, niche-based) ─────────────────────────────────
@@ -213,9 +213,34 @@ def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
     out = _chat([
         {"role": "system", "content": sys},
         {"role": "user", "content": user}
-    ], max_tokens=1300)
+    ], max_tokens=2600)
     out = out.replace("—", ", ").replace(" –", ",")
-    return out.strip()
+    return _trim_incomplete(out.strip())
+
+
+def _trim_incomplete(text):
+    """Kalau teks kepotong di tengah kalimat (gak diakhiri . ! ? : atau emoji),
+    potong balik ke kalimat utuh terakhir biar gak ada 'itu al' nyantol.
+    Jaga struktur part (---) tetep utuh."""
+    if not text:
+        return text
+    # kalau ending udah wajar, biarin
+    if text[-1] in ".!?:\"')👇🔥✨":
+        return text
+    # pisah per part, cek part terakhir
+    parts = text.split("\n---\n")
+    last = parts[-1].rstrip()
+    # cari akhir kalimat terakhir di part itu
+    import re as _re
+    ends = [m.end() for m in _re.finditer(r'[.!?:](?=\s|$)', last)]
+    if ends:
+        last = last[:ends[-1]].rstrip()
+        parts[-1] = last
+        return "\n---\n".join(parts).strip()
+    # part terakhir gak ada kalimat utuh -> buang part itu (kalau ada part lain)
+    if len(parts) > 1:
+        return "\n---\n".join(parts[:-1]).strip()
+    return text
 
 
 if __name__ == "__main__":
