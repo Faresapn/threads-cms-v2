@@ -132,8 +132,8 @@ def post_thread(handle, text, images=None):
     return results
 
 
-def reply_to(handle, root_post_id, text):
-    """Reply teks (bisa berisi link) ke post sendiri. Buat soft-sell link produk."""
+def reply_to(handle, root_post_id, text, image_url=None):
+    """Reply ke post sendiri. Bisa teks (link soft-sell) + opsional 1 gambar produk."""
     tok = _tokens().get(handle)
     if not tok:
         raise RuntimeError(f"token @{handle} gak ada")
@@ -141,17 +141,21 @@ def reply_to(handle, root_post_id, text):
     uid = info.get("id")
     if not uid:
         raise RuntimeError(f"gak dapet user id: {info.get('error', '?')}")
-    p = {"text": text, "media_type": "TEXT", "reply_to_id": root_post_id,
-         "access_token": tok}
+    p = {"text": text, "reply_to_id": root_post_id, "access_token": tok}
+    if image_url:
+        p["media_type"] = "IMAGE"
+        p["image_url"] = image_url
+    else:
+        p["media_type"] = "TEXT"
     body = urllib.parse.urlencode(p).encode()
     cont = _http(f"{GRAPH}/v1.0/{uid}/threads", data=body, method="POST")
     cid = cont.get("id")
     if not cid:
         raise RuntimeError(f"container reply gagal: {str(cont)[:150]}")
-    time.sleep(2)
+    time.sleep(3 if image_url else 2)
     pub_body = urllib.parse.urlencode({"creation_id": cid, "access_token": tok}).encode()
     pub = _http(f"{GRAPH}/v1.0/{uid}/threads_publish", data=pub_body, method="POST")
-    return {"reply_id": pub.get("id"), "text": text[:80]}
+    return {"reply_id": pub.get("id"), "text": text[:80], "has_image": bool(image_url)}
 
 
 def publishing_limit(handle):
