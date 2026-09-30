@@ -1,801 +1,258 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Threads CMS v2</title>
-<style>
-  :root {
-    --bg:#0a0a0b; --surface:#141416; --surface2:#1c1c20; --border:#2a2a30;
-    --fg:#e8e8ea; --muted:#8a8a93; --accent:#5b8cff; --accent2:#4a7aef;
-    --ok:#3ecf8e; --warn:#f5a623; --err:#ff5c5c; --gold:#e6c068; --ai:#b57bff;
-    --radius:14px;
-  }
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    background:var(--bg); color:var(--fg); line-height:1.5; font-size:14px; }
-  .wrap { max-width:1140px; margin:0 auto; padding:22px 18px 80px; }
-  header { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
-  header h1 { font-size:20px; font-weight:700; letter-spacing:-.02em; }
-  header h1 span { color:var(--accent); }
-  .badge { font-size:11px; color:var(--muted); font-family:ui-monospace,monospace;
-    background:var(--surface2); padding:3px 8px; border-radius:20px; border:1px solid var(--border); }
-  .tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--border); }
-  .tabs button { background:none; border:none; color:var(--muted); padding:10px 16px; font-size:14px;
-    font-weight:600; cursor:pointer; border-bottom:2px solid transparent; font-family:inherit; }
-  .tabs button.on { color:var(--fg); border-bottom-color:var(--accent); }
-  .tab-page { display:none; }
-  .tab-page.on { display:block; }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media(max-width:860px){ .grid{ grid-template-columns:1fr; } }
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:18px; }
-  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin-bottom:14px; font-weight:600; }
-  label { display:block; font-size:12px; color:var(--muted); margin:12px 0 5px; }
-  select, input[type=text], input[type=datetime-local], input[type=number], textarea {
-    width:100%; background:var(--surface2); border:1px solid var(--border);
-    color:var(--fg); border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; }
-  textarea { min-height:130px; resize:vertical; line-height:1.55; }
-  textarea.sm { min-height:64px; }
-  select:focus, input:focus, textarea:focus { outline:none; border-color:var(--accent); }
-  .hint { font-size:11px; color:var(--muted); margin-top:5px; }
-  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  button { background:var(--accent); color:#fff; border:none; border-radius:10px;
-    padding:10px 16px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit; }
-  button:hover { background:var(--accent2); }
-  button.ghost { background:transparent; border:1px solid var(--border); color:var(--fg); }
-  button.ghost:hover { background:var(--surface2); }
-  button.ai { background:var(--ai); }
-  button.ai:hover { background:#a565f5; }
-  button.danger { background:transparent; border:1px solid var(--err); color:var(--err); }
-  button.danger:hover { background:rgba(255,92,92,.1); }
-  button.sm { padding:6px 11px; font-size:12px; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  .drop { border:2px dashed var(--border); border-radius:12px; padding:20px; text-align:center;
-    color:var(--muted); cursor:pointer; transition:.15s; font-size:13px; }
-  .drop.over { border-color:var(--accent); background:rgba(91,140,255,.06); color:var(--fg); }
-  .thumbs { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-  .thumb { position:relative; width:72px; height:72px; border-radius:10px; overflow:hidden; border:1px solid var(--border); }
-  .thumb img { width:100%; height:100%; object-fit:cover; }
-  .thumb .x { position:absolute; top:2px; right:2px; background:rgba(0,0,0,.7); color:#fff;
-    border-radius:50%; width:20px; height:20px; font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-  .thumb .idx { position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,.7); color:#fff;
-    font-size:10px; padding:1px 5px; border-radius:6px; font-family:ui-monospace,monospace; }
-  .post { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
-  .post .top { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
-  .post .handle { font-weight:600; color:var(--accent); font-size:13px; }
-  .post .txt { white-space:pre-wrap; font-size:13px; color:var(--fg); max-height:120px; overflow:auto; }
-  .post .meta { font-size:11px; color:var(--muted); margin-top:8px; font-family:ui-monospace,monospace; }
-  .post .actions { display:flex; gap:7px; margin-top:10px; flex-wrap:wrap; }
-  .st { font-size:10px; text-transform:uppercase; letter-spacing:.05em; padding:3px 8px; border-radius:20px; font-weight:700; }
-  .st.draft{ background:#33333a; color:var(--muted); }
-  .st.scheduled{ background:rgba(245,166,35,.15); color:var(--warn); }
-  .st.posting{ background:rgba(91,140,255,.15); color:var(--accent); }
-  .st.posted{ background:rgba(62,207,142,.15); color:var(--ok); }
-  .st.failed{ background:rgba(255,92,92,.15); color:var(--err); }
-  .filters { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
-  .filters button { background:var(--surface2); border:1px solid var(--border); color:var(--muted); padding:6px 13px; font-size:12px; font-weight:500; }
-  .filters button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .mini-img { display:flex; gap:6px; margin-top:8px; flex-wrap:wrap; }
-  .mini-img img { width:46px; height:46px; object-fit:cover; border-radius:8px; border:1px solid var(--border); }
-  .persona-item { background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:10px; }
-  .persona-item .pn { font-weight:600; font-size:14px; }
-  .persona-item .pd { font-size:12px; color:var(--muted); margin-top:3px; }
-  .persona-item .pstyle { font-size:11px; color:var(--muted); margin-top:7px; background:var(--bg); padding:8px; border-radius:8px; max-height:80px; overflow:auto; white-space:pre-wrap; }
-  .tag { font-size:10px; background:rgba(181,123,255,.15); color:var(--ai); padding:2px 7px; border-radius:20px; font-weight:700; }
-  .tag.def { background:rgba(230,192,104,.15); color:var(--gold); }
-  .ins { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; }
-  .ins .box { background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px 12px; text-align:center; min-width:66px; }
-  .ins .box .n { font-size:16px; font-weight:700; }
-  .ins .box .l { font-size:10px; color:var(--muted); text-transform:uppercase; }
-  #toast { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
-    background:var(--surface2); border:1px solid var(--border); padding:11px 18px;
-    border-radius:12px; font-size:13px; opacity:0; transition:.25s; pointer-events:none; z-index:99; max-width:80%; }
-  #toast.show { opacity:1; }
-  #toast.err { border-color:var(--err); color:var(--err); }
-  #toast.ok { border-color:var(--ok); color:var(--ok); }
-  .empty { text-align:center; color:var(--muted); padding:26px; font-size:13px; }
-  .spin { display:inline-block; width:13px; height:13px; border:2px solid rgba(255,255,255,.3);
-    border-top-color:#fff; border-radius:50%; animation:sp .7s linear infinite; vertical-align:-2px; }
-  @keyframes sp { to { transform:rotate(360deg); } }
-</style>
+<link rel="stylesheet" href="/app.css">
 </head>
 <body>
-<div class="wrap">
-  <header>
-    <h1>Threads <span>CMS</span> v2</h1>
-    <span class="badge" id="acc-badge">loading...</span>
-  </header>
+<div class="app">
+  <!-- ══════ SIDEBAR ══════ -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">T</div>
+      <div class="name">Threads<span>CMS</span></div>
+    </div>
 
-  <div class="tabs">
-    <button data-tab="compose" class="on">Compose</button>
-    <button data-tab="persona">Persona AI</button>
-    <button data-tab="autopost">Auto-Post</button>
-    <button data-tab="insight">Analytics</button>
-    <button data-tab="akun">Akun</button>
-  </div>
+    <div class="nav-section">Menu</div>
+    <div class="nav-item on" data-page="dashboard"><span class="ico">▦</span> Dashboard</div>
+    <div class="nav-item" data-page="analytics"><span class="ico">📊</span> Analytics</div>
+    <div class="nav-item" data-page="compose"><span class="ico">✎</span> Compose</div>
+    <div class="nav-item" data-page="autopost"><span class="ico">⚡</span> Auto-Post</div>
+    <div class="nav-item" data-page="persona"><span class="ico">🎭</span> Persona AI</div>
 
-  <!-- ===== COMPOSE TAB ===== -->
-  <div class="tab-page on" id="tab-compose">
-  <div class="grid">
-    <div class="card">
-      <h2>Compose</h2>
-      <label>Akun</label>
-      <select id="handle"></select>
+    <div class="nav-section">Akun</div>
+    <div id="side-accounts"></div>
+    <div class="nav-item" data-page="akun"><span class="ico">＋</span> Kelola Akun</div>
 
-      <!-- AI GENERATE -->
-      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:12px;">
-        <div class="row" style="justify-content:space-between">
-          <strong style="font-size:12px; color:var(--ai)">✨ AI Generate</strong>
+    <div class="sidebar-foot">
+      <div class="nav-item" id="side-status"><span class="ico">●</span> <span id="status-txt">online</span></div>
+    </div>
+  </aside>
+
+  <!-- ══════ MAIN ══════ -->
+  <div class="main">
+    <div class="topbar">
+      <div class="crumb">Threads CMS / <b id="crumb-page">Dashboard</b></div>
+      <div class="topbar-right">
+        <select id="global-account" style="width:auto; min-width:170px"></select>
+        <button class="theme-toggle" id="theme-btn" title="Ganti tema">🌙</button>
+      </div>
+    </div>
+    <div class="content">
+
+      <!-- ══ DASHBOARD ══ -->
+      <div class="page on" id="page-dashboard">
+        <div class="page-title">Dashboard</div>
+        <div class="page-sub" id="dash-sub">Ringkasan performa akun</div>
+        <div class="stats" id="dash-stats"></div>
+        <div class="grid-2-1">
+          <div class="card">
+            <h2>Engagement per Post</h2>
+            <div class="chart-wrap" id="dash-chart"><div class="empty">memuat...</div></div>
+          </div>
+          <div class="card">
+            <h2>Breakdown Engagement</h2>
+            <div id="dash-donut"><div class="empty">memuat...</div></div>
+          </div>
         </div>
-        <label>Persona</label>
-        <select id="gen-persona"><option value="">— tanpa persona —</option></select>
-        <label>Topik / ide</label>
-        <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
-        <label>Arahan tambahan (mau seperti apa) — opsional</label>
-        <textarea id="gen-brief" class="sm" placeholder="mis: tone lebih personal, ceritain pengalaman, jangan terlalu formal"></textarea>
-        <div class="row" style="margin-top:10px">
-          <label style="margin:0">Jumlah part</label>
-          <input type="number" id="gen-parts" value="1" min="1" max="6" style="width:70px">
-          <button class="ai" id="btn-gen">Generate</button>
-        </div>
-        <div class="hint">Kalau isi <b>link produk</b> di bawah, AI bikin soft-sell + auto-reply link. Kalau kosong, murni storytelling tanpa jualan.</div>
-      </div>
-
-      <label>Teks (pisah part chain pakai <code>---</code> di baris sendiri)</label>
-      <textarea id="text" placeholder="Tulis thread di sini...&#10;&#10;---&#10;&#10;Part kedua (auto jadi reply)"></textarea>
-      <div class="hint" id="charc">0 karakter · 1 part</div>
-
-      <!-- SOFT-SELL LINK -->
-      <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:14px;">
-        <strong style="font-size:12px; color:var(--gold)">🔗 Soft-sell (opsional)</strong>
-        <label>Link produk (kosongkan = storytelling biasa, tanpa reply jualan)</label>
-        <input type="text" id="ss-link" placeholder="https://promptedsite.com/...">
-        <label>Teks reply sebelum link — opsional</label>
-        <input type="text" id="ss-text" placeholder="mis: cek koleksi lengkapnya di sini 👇">
-        <div class="hint">Kalau link diisi: abis thread kepost, bot auto-reply link ini di komen.</div>
-      </div>
-
-      <label>Gambar (drag &amp; drop / klik) — gambar ke-N nempel di part ke-N</label>
-      <div class="drop" id="drop">Seret foto ke sini atau klik buat pilih<br><span style="font-size:11px">upload otomatis ke R2</span></div>
-      <input type="file" id="file" accept="image/*" multiple hidden>
-      <div class="thumbs" id="thumbs"></div>
-
-      <label>Jadwal (kosongkan = simpan draft)</label>
-      <input type="datetime-local" id="sched">
-
-      <div class="row" style="margin-top:16px">
-        <button id="btn-save">Simpan</button>
-        <button class="ghost" id="btn-clear">Reset</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Queue &amp; Riwayat</h2>
-      <div class="filters" id="filters">
-        <button data-f="" class="on">Semua</button>
-        <button data-f="draft">Draft</button>
-        <button data-f="scheduled">Terjadwal</button>
-        <button data-f="posted">Terkirim</button>
-        <button data-f="failed">Gagal</button>
-      </div>
-      <div id="list"><div class="empty">memuat...</div></div>
-    </div>
-  </div>
-  </div>
-
-  <!-- ===== PERSONA TAB ===== -->
-  <div class="tab-page" id="tab-persona">
-  <div class="grid">
-    <div class="card">
-      <h2 id="pf-title">Buat Persona</h2>
-      <input type="hidden" id="p-id">
-      <label>Akun</label>
-      <select id="p-handle"></select>
-      <label>Nama persona</label>
-      <input type="text" id="p-name" placeholder="mis: Visioner EN Global">
-      <label>Deskripsi singkat (buat kamu inget)</label>
-      <input type="text" id="p-desc" placeholder="tone visioner, soft-sell, AI design">
-      <label>Bahasa</label>
-      <select id="p-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
-      <label>Instruksi gaya (system prompt) — opsional</label>
-      <textarea id="p-sys" class="sm" placeholder="Nulis soal AI & design, tone visioner tapi santai, soft-sell (link di reply)"></textarea>
-      <label>Link Threads buat dipelajari gayanya (1 URL per baris)</label>
-      <textarea id="p-urls" class="sm" placeholder="https://www.threads.net/@promptedsite/post/xxx&#10;https://www.threads.net/@promptedsite/post/yyy"></textarea>
-      <div class="hint">AI bakal fetch post dari link ini + post akun sendiri, terus niru gayanya.</div>
-      <label class="row" style="margin-top:12px"><input type="checkbox" id="p-default" style="width:auto; margin-right:7px"> Jadikan default akun ini</label>
-      <div class="row" style="margin-top:14px">
-        <button id="btn-psave">Simpan Persona</button>
-        <button class="ai" id="btn-plearn">✨ Belajar Gaya dari Link</button>
-        <button class="ghost" id="btn-pnew">Baru</button>
-      </div>
-      <div class="hint" id="learn-status"></div>
-    </div>
-    <div class="card">
-      <h2>Daftar Persona</h2>
-      <div id="persona-list"><div class="empty">memuat...</div></div>
-    </div>
-  </div>
-  </div>
-
-  <!-- ===== AUTO-POST TAB ===== -->
-  <div class="tab-page" id="tab-autopost">
-  <div class="grid">
-    <div class="card">
-      <h2>Auto Random-Post</h2>
-      <label>Akun</label>
-      <select id="ap-handle"></select>
-
-      <div class="row" style="justify-content:space-between; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:12px;">
-        <div><strong style="font-size:14px" id="ap-state-label">OFF</strong>
-          <div class="hint" style="margin:0">Nyalain buat auto-generate + jadwal utas tiap hari</div></div>
-        <button id="ap-toggle" class="ghost">Toggle ON/OFF</button>
-      </div>
-
-      <label>Bahasa post</label>
-      <select id="ap-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
-
-      <label>Niche (1 per baris) — utas dipilih random dari sini</label>
-      <textarea id="ap-niches" class="sm" placeholder="AI tools&#10;Side Hustle&#10;Self Improvement&#10;Prompt engineering"></textarea>
-
-      <label>Link referensi gaya penulisan (1 per baris) — opsional</label>
-      <textarea id="ap-styleurls" class="sm" placeholder="https://www.threads.net/@ragajatsuma/post/xxx"></textarea>
-      <div class="hint">Link contoh gaya. (Catatan: Threads batasi baca post akun orang, jadi ini disimpan sbg catatan + dipakai style guide bawaan.)</div>
-
-      <label>Panduan gaya (style guide) — bisa diedit</label>
-      <textarea id="ap-guide" style="min-height:120px"></textarea>
-
-      <div class="row">
-        <div style="flex:1"><label>Post per hari</label>
-          <input type="number" id="ap-ppd" value="3" min="1" max="8"></div>
-        <div style="flex:1"><label>Part min</label>
-          <input type="number" id="ap-pmin" value="1" min="1" max="6"></div>
-        <div style="flex:1"><label>Part max</label>
-          <input type="number" id="ap-pmax" value="3" min="1" max="6"></div>
-      </div>
-
-      <label>Jam terbaik (WIB, pisah koma) — sistem pilih random dari sini</label>
-      <input type="text" id="ap-hours" placeholder="8, 12, 18, 21">
-
-      <label>Persona (opsional, buat nambah karakter)</label>
-      <select id="ap-persona"><option value="">— tanpa persona —</option></select>
-
-      <div class="row" style="margin-top:16px">
-        <button id="ap-save">Simpan Config</button>
-        <button class="ai" id="ap-preview">✨ Preview 1 Utas</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Preview & Info</h2>
-      <div id="ap-preview-box"><div class="empty">Klik "Preview 1 Utas" buat lihat contoh hasil AI</div></div>
-      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border)">
-        <div class="hint" style="line-height:1.7">
-          <b>Cara kerja:</b><br>
-          • Kalau ON, tiap hari sistem generate utas edukasi random sesuai niche<br>
-          • Dijadwal di jam terbaik (menit random)<br>
-          • Masuk ke Queue tab Compose dgn tanda <span class="tag">auto</span><br>
-          • Kamu bisa <b>hapus/batalin</b> sebelum kepost<br>
-          • Bahasa ikut setting (EN/ID)<br>
-          • Kepisah dari post manual kamu
+        <div class="grid-2-1" style="margin-top:18px">
+          <div class="card">
+            <h2>Jadwal Mendatang</h2>
+            <div id="dash-upcoming"><div class="empty">memuat...</div></div>
+          </div>
+          <div class="card">
+            <h2>Status Antrian</h2>
+            <div id="dash-queue-stat"><div class="empty">memuat...</div></div>
+          </div>
         </div>
       </div>
-    </div>
-  </div>
-  </div>
 
-  <!-- ===== ANALYTICS TAB ===== -->
-  <div class="tab-page" id="tab-insight">
-  <div class="card">
-    <h2>Analytics Performa Akun</h2>
-    <div class="row">
-      <select id="ins-handle" style="max-width:240px"></select>
-      <button id="btn-insload">Muat Analytics</button>
-      <span class="hint" id="ana-note" style="margin:0"></span>
-    </div>
-    <div id="analytics-summary" style="margin-top:18px"></div>
-    <div id="insight-list" style="margin-top:16px"><div class="empty">pilih akun lalu klik Muat Analytics</div></div>
-  </div>
-  </div>
-
-  <!-- ===== AKUN TAB ===== -->
-  <div class="tab-page" id="tab-akun">
-  <div class="grid">
-    <div class="card">
-      <h2>Tambah Akun Threads</h2>
-
-      <div style="background:var(--surface2); border:1px solid var(--accent); border-radius:12px; padding:14px; margin-bottom:16px;">
-        <strong style="font-size:13px; color:var(--accent)">⚡ Cara Termudah — Connect via Login</strong>
-        <div class="hint" style="margin:6px 0 10px">Klik tombol, login akun target di popup Meta, token otomatis masuk. Nggak perlu copy-paste.</div>
-        <button id="acc-oauth">🔗 Connect Akun Baru</button>
-        <div class="hint" id="oauth-status" style="margin-top:8px"></div>
-      </div>
-
-      <div style="text-align:center; color:var(--muted); font-size:12px; margin:10px 0">— atau paste token manual —</div>
-      <label>Access Token dari Meta</label>
-      <textarea id="acc-token" class="sm" placeholder="Paste token dari Meta (Graph API Explorer / OAuth)"></textarea>
-      <label class="row" style="margin-top:10px"><input type="checkbox" id="acc-exchange" checked style="width:auto; margin-right:7px"> Exchange ke long-lived (awet 60 hari) — rekomendasi</label>
-      <div class="hint">Username diambil otomatis dari token. Token divalidasi ke Meta dulu sebelum disimpan.</div>
-      <div class="row" style="margin-top:14px">
-        <button id="acc-add">Validasi &amp; Tambah</button>
-      </div>
-      <div class="hint" id="acc-status" style="margin-top:12px"></div>
-
-      <div style="margin-top:18px; padding-top:16px; border-top:1px solid var(--border)">
-        <div class="hint" style="line-height:1.7">
-          <b>Cara dapet token dari Meta:</b><br>
-          1. Buka <b>developers.facebook.com</b> → app Threads kamu<br>
-          2. Tools → <b>Graph API Explorer</b> (atau flow OAuth)<br>
-          3. Pilih akun Threads, generate token dgn scope:<br>
-          &nbsp;&nbsp;<code style="font-size:11px">threads_basic, threads_content_publish, threads_manage_replies, threads_manage_insights</code><br>
-          4. Copy token, paste di atas<br>
-          <span style="color:var(--gold)">Token pendek (1 jam) otomatis di-exchange jadi 60 hari.</span>
+      <!-- ══ ANALYTICS ══ -->
+      <div class="page" id="page-analytics">
+        <div class="page-title">Analytics</div>
+        <div class="page-sub">Performa detail akun dari Threads</div>
+        <div class="row" style="margin-bottom:20px">
+          <button id="btn-ana-load">Muat Analytics</button>
+          <span class="hint" id="ana-note" style="margin:0"></span>
+        </div>
+        <div class="stats" id="ana-stats"></div>
+        <div class="grid-2-1">
+          <div class="card">
+            <h2>Views per Post</h2>
+            <div class="chart-wrap" id="ana-chart"><div class="empty">klik Muat Analytics</div></div>
+          </div>
+          <div class="card">
+            <h2>Breakdown</h2>
+            <div id="ana-donut"><div class="empty">—</div></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:18px">
+          <h2>🏆 Top Post</h2>
+          <div id="ana-top"><div class="empty">klik Muat Analytics buat lihat top post</div></div>
         </div>
       </div>
-    </div>
 
-    <div class="card">
-      <h2>Akun Terhubung</h2>
-      <div id="akun-list"><div class="empty">memuat...</div></div>
+      <!-- ══ COMPOSE ══ -->
+      <div class="page" id="page-compose">
+        <div class="page-title">Compose</div>
+        <div class="page-sub">Bikin & jadwalin post</div>
+        <div class="grid">
+          <div class="card">
+            <h2>Tulis Post</h2>
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:14px;">
+              <strong style="font-size:12px; color:var(--ai)">✨ AI Generate</strong>
+              <label>Persona</label>
+              <select id="gen-persona"><option value="">— tanpa persona —</option></select>
+              <label>Topik / ide</label>
+              <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
+              <label>Arahan tambahan — opsional</label>
+              <textarea id="gen-brief" class="sm" placeholder="mis: tone lebih personal, ceritain pengalaman"></textarea>
+              <div class="row" style="margin-top:10px">
+                <label style="margin:0">Part</label>
+                <input type="number" id="gen-parts" value="1" min="1" max="6" style="width:66px">
+                <button class="ai" id="btn-gen">Generate</button>
+              </div>
+            </div>
+            <label>Teks (pisah part pakai <code>---</code>)</label>
+            <textarea id="text" placeholder="Tulis thread di sini..."></textarea>
+            <div class="hint" id="charc">0 karakter · 1 part</div>
+            <div style="background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-top:14px;">
+              <strong style="font-size:12px; color:var(--gold)">🔗 Soft-sell (opsional)</strong>
+              <label>Link produk (kosong = storytelling biasa)</label>
+              <input type="text" id="ss-link" placeholder="https://promptedsite.com/...">
+              <label>Teks reply sebelum link — opsional</label>
+              <input type="text" id="ss-text" placeholder="cek koleksi lengkapnya 👇">
+            </div>
+            <label>Gambar (drag & drop / klik)</label>
+            <div class="drop" id="drop">Seret foto ke sini atau klik<br><span style="font-size:11px">auto-upload R2</span></div>
+            <input type="file" id="file" accept="image/*" multiple hidden>
+            <div class="thumbs" id="thumbs"></div>
+            <label>Jadwal (kosong = draft)</label>
+            <input type="datetime-local" id="sched">
+            <div class="row" style="margin-top:16px">
+              <button id="btn-save">Simpan</button>
+              <button class="ghost" id="btn-clear">Reset</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Queue & Riwayat</h2>
+            <div class="filters" id="filters">
+              <button data-f="" class="on">Semua</button>
+              <button data-f="draft">Draft</button>
+              <button data-f="scheduled">Terjadwal</button>
+              <button data-f="posted">Terkirim</button>
+              <button data-f="failed">Gagal</button>
+            </div>
+            <div id="list"><div class="empty">memuat...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AUTO-POST ══ -->
+      <div class="page" id="page-autopost">
+        <div class="page-title">Auto-Post</div>
+        <div class="page-sub">AI generate utas edukasi terjadwal otomatis</div>
+        <div class="grid">
+          <div class="card">
+            <h2>Config Auto Random-Post</h2>
+            <div class="row" style="justify-content:space-between; background:var(--surface2); border:1px solid var(--border); border-radius:12px; padding:13px; margin-bottom:12px;">
+              <div><strong style="font-size:14px" id="ap-state-label">OFF</strong>
+                <div class="hint" style="margin:0">Auto-generate + jadwal tiap hari</div></div>
+              <button id="ap-toggle" class="ghost">Toggle ON/OFF</button>
+            </div>
+            <label>Bahasa</label>
+            <select id="ap-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
+            <label>Niche (1 per baris)</label>
+            <textarea id="ap-niches" class="sm" placeholder="AI tools&#10;Side Hustle&#10;Self Improvement"></textarea>
+            <label>Link referensi gaya (1 per baris) — opsional</label>
+            <textarea id="ap-styleurls" class="sm" placeholder="https://www.threads.net/@user/post/xxx"></textarea>
+            <label>Panduan gaya (bisa diedit)</label>
+            <textarea id="ap-guide" style="min-height:110px"></textarea>
+            <div class="row">
+              <div style="flex:1"><label>Post/hari</label><input type="number" id="ap-ppd" value="3" min="1" max="8"></div>
+              <div style="flex:1"><label>Part min</label><input type="number" id="ap-pmin" value="1" min="1" max="6"></div>
+              <div style="flex:1"><label>Part max</label><input type="number" id="ap-pmax" value="3" min="1" max="6"></div>
+            </div>
+            <label>Jam terbaik (WIB, pisah koma)</label>
+            <input type="text" id="ap-hours" placeholder="8, 12, 18, 21">
+            <label>Persona (opsional)</label>
+            <select id="ap-persona"><option value="">— tanpa persona —</option></select>
+            <div class="row" style="margin-top:16px">
+              <button id="ap-save">Simpan Config</button>
+              <button class="ai" id="ap-preview">✨ Preview</button>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Preview</h2>
+            <div id="ap-preview-box"><div class="empty">klik Preview buat contoh hasil AI</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ PERSONA ══ -->
+      <div class="page" id="page-persona">
+        <div class="page-title">Persona AI</div>
+        <div class="page-sub">Karakter & gaya nulis per akun</div>
+        <div class="grid">
+          <div class="card">
+            <h2 id="pf-title">Buat Persona</h2>
+            <input type="hidden" id="p-id">
+            <label>Akun</label><select id="p-handle"></select>
+            <label>Nama persona</label><input type="text" id="p-name" placeholder="mis: Visioner EN">
+            <label>Deskripsi singkat</label><input type="text" id="p-desc" placeholder="tone, gaya, target">
+            <label>Bahasa</label><select id="p-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
+            <label>Instruksi gaya (system prompt)</label>
+            <textarea id="p-sys" class="sm" placeholder="Nulis soal X, tone visioner tapi santai"></textarea>
+            <label>Link Threads buat belajar gaya (1 per baris)</label>
+            <textarea id="p-urls" class="sm" placeholder="https://www.threads.net/@user/post/xxx"></textarea>
+            <label class="row" style="margin-top:12px"><input type="checkbox" id="p-default" style="width:auto; margin-right:7px"> Jadikan default</label>
+            <div class="row" style="margin-top:14px">
+              <button id="btn-psave">Simpan</button>
+              <button class="ai" id="btn-plearn">✨ Belajar Gaya</button>
+              <button class="ghost" id="btn-pnew">Baru</button>
+            </div>
+            <div class="hint" id="learn-status"></div>
+          </div>
+          <div class="card">
+            <h2>Daftar Persona</h2>
+            <div id="persona-list"><div class="empty">memuat...</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══ AKUN ══ -->
+      <div class="page" id="page-akun">
+        <div class="page-title">Kelola Akun</div>
+        <div class="page-sub">Tambah & atur akun Threads</div>
+        <div class="grid">
+          <div class="card">
+            <h2>Tambah Akun</h2>
+            <div style="background:var(--surface2); border:1px solid var(--accent); border-radius:12px; padding:14px; margin-bottom:16px;">
+              <strong style="font-size:13px; color:var(--accent)">⚡ Connect via Login</strong>
+              <div class="hint" style="margin:6px 0 10px">Login akun di popup Meta, token auto-masuk.</div>
+              <button id="acc-oauth">🔗 Connect Akun Baru</button>
+              <div class="hint" id="oauth-status" style="margin-top:8px"></div>
+            </div>
+            <div style="text-align:center; color:var(--muted); font-size:12px; margin:10px 0">— atau paste token manual —</div>
+            <label>Access Token dari Meta</label>
+            <textarea id="acc-token" class="sm" placeholder="Paste token dari Meta"></textarea>
+            <label class="row" style="margin-top:10px"><input type="checkbox" id="acc-exchange" checked style="width:auto; margin-right:7px"> Exchange long-lived (60 hari)</label>
+            <div class="row" style="margin-top:14px"><button id="acc-add">Validasi & Tambah</button></div>
+            <div class="hint" id="acc-status" style="margin-top:12px"></div>
+          </div>
+          <div class="card">
+            <h2>Akun Terhubung</h2>
+            <div id="akun-list"><div class="empty">memuat...</div></div>
+          </div>
+        </div>
+      </div>
+
     </div>
-  </div>
   </div>
 </div>
 <div id="toast"></div>
-
-<script>
-const $ = s => document.querySelector(s);
-let uploads = [];
-let curFilter = "";
-let accounts = [];
-
-function toast(msg, kind="") {
-  const t = $("#toast"); t.textContent = msg; t.className = "show " + kind;
-  setTimeout(()=> t.className = "", 3000);
-}
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const j = await r.json();
-  if (!r.ok || j.error) throw new Error(j.error || ("HTTP "+r.status));
-  return j;
-}
-
-// ── tabs ──
-document.querySelectorAll(".tabs button").forEach(b=>{
-  b.addEventListener("click", ()=>{
-    document.querySelectorAll(".tabs button").forEach(x=>x.classList.toggle("on", x===b));
-    document.querySelectorAll(".tab-page").forEach(p=>p.classList.remove("on"));
-    $("#tab-"+b.dataset.tab).classList.add("on");
-    if (b.dataset.tab==="persona") loadPersonas();
-    if (b.dataset.tab==="autopost") loadAutopost();
-    if (b.dataset.tab==="akun") loadAkun();
-  });
-});
-
-// ── accounts ──
-function fillAccountSelects() {
-  const opts = accounts.map(a=>`<option value="${a.handle}">@${a.handle}</option>`).join("");
-  ["#handle","#p-handle","#ins-handle","#ap-handle"].forEach(s=>{ if($(s)) $(s).innerHTML=opts; });
-}
-async function loadAccounts() {
-  accounts = await api("/api/accounts");
-  fillAccountSelects();
-  $("#acc-badge").textContent = accounts.length + " akun · :8455";
-}
-
-// ── AI generate ──
-async function loadGenPersonas() {
-  const handle = $("#handle").value;
-  try {
-    const ps = await api("/api/personas" + (handle?`?handle=${handle}`:""));
-    $("#gen-persona").innerHTML = '<option value="">— tanpa persona —</option>' +
-      ps.map(p=>`<option value="${p.id}" ${p.is_default?"selected":""}>${esc(p.name)}</option>`).join("");
-  } catch(e){}
-}
-$("#handle").addEventListener("change", loadGenPersonas);
-$("#btn-gen").addEventListener("click", async ()=>{
-  const topic = $("#gen-topic").value.trim();
-  if (!topic) return toast("isi topik dulu", "err");
-  const btn = $("#btn-gen"); const old = btn.innerHTML;
-  btn.disabled = true; btn.innerHTML = '<span class="spin"></span> generating...';
-  try {
-    const payload = { topic, num_parts:parseInt($("#gen-parts").value)||1 };
-    const pid = $("#gen-persona").value;
-    if (pid) payload.persona_id = parseInt(pid);
-    else payload.lang = "id";
-    payload.has_link = !!$("#ss-link").value.trim();
-    const brief = $("#gen-brief").value.trim();
-    if (brief) payload.brief = brief;
-    const j = await api("/api/generate", { method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-    $("#text").value = j.text; updateCount();
-    toast("digenerate ✓ (edit dulu kalau perlu)", "ok");
-  } catch(e){ toast("gagal generate: "+e.message, "err"); }
-  finally { btn.disabled=false; btn.innerHTML=old; }
-});
-
-// ── char counter ──
-function updateCount() {
-  const t = $("#text").value;
-  const parts = t.split(/\n\s*---\s*\n/).filter(p=>p.trim()).length || 1;
-  $("#charc").textContent = `${t.length} karakter · ${parts} part`;
-}
-$("#text").addEventListener("input", updateCount);
-
-// ── upload ──
-const drop = $("#drop"), fileInput = $("#file");
-drop.addEventListener("click", ()=> fileInput.click());
-drop.addEventListener("dragover", e=>{ e.preventDefault(); drop.classList.add("over"); });
-drop.addEventListener("dragleave", ()=> drop.classList.remove("over"));
-drop.addEventListener("drop", e=>{ e.preventDefault(); drop.classList.remove("over"); handleFiles(e.dataTransfer.files); });
-fileInput.addEventListener("change", ()=> handleFiles(fileInput.files));
-async function handleFiles(files) {
-  for (const f of files) {
-    if (!f.type.startsWith("image/")) { toast("bukan gambar: "+f.name, "err"); continue; }
-    const fd = new FormData(); fd.append("file", f);
-    toast("upload "+f.name+"...");
-    try {
-      const j = await api("/api/upload", { method:"POST", body:fd });
-      uploads.push({ r2_key:j.r2_key, public_url:j.public_url, filename:j.filename });
-      renderThumbs(); toast("uploaded ✓", "ok");
-    } catch(e){ toast("gagal upload: "+e.message, "err"); }
-  }
-}
-function renderThumbs() {
-  $("#thumbs").innerHTML = uploads.map((u,i)=>`
-    <div class="thumb"><img src="${u.public_url}" alt="">
-      <div class="idx">#${i}</div><div class="x" onclick="rmUpload(${i})">×</div></div>`).join("");
-}
-window.rmUpload = i => { uploads.splice(i,1); renderThumbs(); };
-
-// ── save post ──
-$("#btn-save").addEventListener("click", async ()=>{
-  const handle = $("#handle").value;
-  const text = $("#text").value.trim();
-  if (!handle) return toast("pilih akun", "err");
-  if (!text) return toast("teks kosong", "err");
-  const schedRaw = $("#sched").value;
-  const btn = $("#btn-save"); btn.disabled = true;
-  try {
-    const payload = { handle, text };
-    if (schedRaw) payload.scheduled_at = schedRaw;
-    const ssLink = $("#ss-link").value.trim();
-    if (ssLink) { payload.softsell_link = ssLink; payload.softsell_text = $("#ss-text").value.trim(); }
-    const j = await api("/api/post", { method:"POST",
-      headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
-    for (let i=0;i<uploads.length;i++){
-      await api("/api/post/attach", { method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ id:j.id, part_index:i,
-          r2_key:uploads[i].r2_key, public_url:uploads[i].public_url, filename:uploads[i].filename }) });
-    }
-    toast(schedRaw ? "terjadwal ✓" : "draft tersimpan ✓", "ok");
-    clearForm(); loadPosts();
-  } catch(e){ toast("gagal: "+e.message, "err"); }
-  finally { btn.disabled = false; }
-});
-$("#btn-clear").addEventListener("click", clearForm);
-function clearForm() { $("#text").value=""; $("#sched").value=""; $("#gen-topic").value=""; $("#gen-brief").value=""; $("#ss-link").value=""; $("#ss-text").value=""; uploads=[]; renderThumbs(); updateCount(); }
-
-// ── list queue ──
-$("#filters").addEventListener("click", e=>{
-  if (e.target.tagName!=="BUTTON") return;
-  curFilter = e.target.dataset.f;
-  document.querySelectorAll("#filters button").forEach(b=>b.classList.toggle("on", b===e.target));
-  loadPosts();
-});
-async function loadPosts() {
-  try {
-    const posts = await api("/api/posts" + (curFilter?`?status=${curFilter}`:""));
-    const el = $("#list");
-    if (!posts.length){ el.innerHTML = '<div class="empty">belum ada post</div>'; return; }
-    el.innerHTML = posts.map(renderPost).join("");
-  } catch(e){ $("#list").innerHTML = `<div class="empty">error: ${e.message}</div>`; }
-}
-function renderPost(p) {
-  const imgs = (p.media||[]).map(m=>`<img src="${m.public_url}" title="part #${m.part_index}">`).join("");
-  const when = p.scheduled_at ? new Date(p.scheduled_at).toLocaleString("id-ID") : "";
-  const posted = p.posted_at ? new Date(p.posted_at).toLocaleString("id-ID") : "";
-  return `<div class="post"><div class="top">
-      <span class="handle">@${p.handle} ${p.source==="auto"?'<span class="tag">auto</span>':''}</span><span class="st ${p.status}">${p.status}</span></div>
-    <div class="txt">${esc(p.text)}</div>
-    ${imgs?`<div class="mini-img">${imgs}</div>`:""}
-    ${p.softsell_link?`<div class="meta" style="color:var(--gold)">🔗 soft-sell: ${esc(p.softsell_link)}</div>`:""}
-    <div class="meta">${when?`⏰ ${when}`:""} ${posted?`✅ ${posted}`:""}${p.error?`<br>⚠ ${esc(p.error)}`:""}</div>
-    <div class="actions">
-      ${p.status!=="posted"?`<button class="sm" onclick="pub('${p.id}')">Post sekarang</button>`:""}
-      <button class="sm danger" onclick="del('${p.id}')">Hapus</button></div></div>`;
-}
-function esc(s){ return (s||"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
-window.pub = async id => {
-  if (!confirm("Post sekarang ke Threads?")) return;
-  toast("posting...");
-  try { await api("/api/post/publish", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
-    toast("terkirim ✓","ok"); loadPosts();
-  } catch(e){ toast("gagal: "+e.message,"err"); loadPosts(); }
-};
-window.del = async id => {
-  if (!confirm("Hapus post ini?")) return;
-  try { await api("/api/post/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
-    toast("dihapus","ok"); loadPosts();
-  } catch(e){ toast("gagal: "+e.message,"err"); }
-};
-
-// ── PERSONA ──
-async function loadPersonas() {
-  try {
-    const ps = await api("/api/personas");
-    const el = $("#persona-list");
-    if (!ps.length){ el.innerHTML='<div class="empty">belum ada persona</div>'; return; }
-    el.innerHTML = ps.map(p=>`<div class="persona-item">
-      <div class="row" style="justify-content:space-between">
-        <span class="pn">${esc(p.name)} <span class="tag">@${p.handle}</span> ${p.is_default?'<span class="tag def">default</span>':''}</span>
-      </div>
-      <div class="pd">${esc(p.description||"")}</div>
-      ${p.learned_style?`<div class="pstyle">📚 gaya dipelajari:\n${esc(p.learned_style)}</div>`:'<div class="pd" style="color:var(--warn)">belum belajar gaya</div>'}
-      <div class="actions" style="display:flex; gap:7px; margin-top:9px">
-        <button class="sm ghost" onclick="editPersona(${p.id})">Edit</button>
-        <button class="sm danger" onclick="delPersona(${p.id})">Hapus</button>
-      </div></div>`).join("");
-  } catch(e){ $("#persona-list").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
-}
-window.editPersona = async id => {
-  const p = await api("/api/persona?id="+id);
-  $("#p-id").value=p.id; $("#p-handle").value=p.handle; $("#p-name").value=p.name;
-  $("#p-desc").value=p.description||""; $("#p-lang").value=p.lang||"id";
-  $("#p-sys").value=p.system_prompt||""; $("#p-urls").value=(p.reference_urls||[]).join("\n");
-  $("#p-default").checked=!!p.is_default; $("#pf-title").textContent="Edit Persona";
-  $("#learn-status").textContent=""; window.scrollTo(0,0);
-};
-window.delPersona = async id => {
-  if (!confirm("Hapus persona ini?")) return;
-  await api("/api/persona/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id}) });
-  toast("dihapus","ok"); loadPersonas();
-};
-$("#btn-pnew").addEventListener("click", ()=>{
-  $("#p-id").value=""; $("#p-name").value=""; $("#p-desc").value="";
-  $("#p-sys").value=""; $("#p-urls").value=""; $("#p-default").checked=false;
-  $("#pf-title").textContent="Buat Persona"; $("#learn-status").textContent="";
-});
-function personaPayload() {
-  const urls = $("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean);
-  const p = { handle:$("#p-handle").value, name:$("#p-name").value.trim(),
-    description:$("#p-desc").value.trim(), system_prompt:$("#p-sys").value.trim(),
-    lang:$("#p-lang").value, reference_urls:urls, is_default:$("#p-default").checked };
-  if ($("#p-id").value) p.id = parseInt($("#p-id").value);
-  return p;
-}
-$("#btn-psave").addEventListener("click", async ()=>{
-  const p = personaPayload();
-  if (!p.name) return toast("isi nama persona","err");
-  try {
-    const j = await api("/api/persona/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
-    $("#p-id").value = j.id; $("#pf-title").textContent="Edit Persona";
-    toast("persona tersimpan ✓","ok"); loadPersonas(); loadGenPersonas();
-  } catch(e){ toast("gagal: "+e.message,"err"); }
-});
-$("#btn-plearn").addEventListener("click", async ()=>{
-  let pid = $("#p-id").value;
-  if (!pid) {  // save dulu biar ada id
-    const p = personaPayload();
-    if (!p.name) return toast("isi nama & simpan dulu","err");
-    try { const j = await api("/api/persona/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
-      pid = j.id; $("#p-id").value=pid; } catch(e){ return toast("gagal simpan: "+e.message,"err"); }
-  }
-  const urls = $("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean);
-  const btn = $("#btn-plearn"); const old=btn.innerHTML;
-  btn.disabled=true; btn.innerHTML='<span class="spin"></span> belajar...';
-  $("#learn-status").textContent="fetch link + analisis gaya (bisa 20-40 detik)...";
-  try {
-    const j = await api("/api/persona/learn", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({id:parseInt(pid), reference_urls:urls}) });
-    $("#learn-status").innerHTML = `✅ belajar dari ${j.samples_found} post. Gaya:<br><em>${esc(j.learned_style.slice(0,200))}...</em>`;
-    toast("gaya dipelajari ✓","ok"); loadPersonas();
-  } catch(e){ $("#learn-status").textContent="⚠ "+e.message; toast("gagal belajar: "+e.message,"err"); }
-  finally { btn.disabled=false; btn.innerHTML=old; }
-});
-
-// ── AUTOPOST ──
-async function loadAutopostPersonas() {
-  const h = $("#ap-handle").value;
-  try {
-    const ps = await api("/api/personas" + (h?`?handle=${h}`:""));
-    const cur = $("#ap-persona").value;
-    $("#ap-persona").innerHTML = '<option value="">— tanpa persona —</option>' +
-      ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
-  } catch(e){}
-}
-async function loadAutopost() {
-  const h = $("#ap-handle").value;
-  if (!h) return;
-  // reset preview box tiap ganti akun biar gak nyangkut punya akun lama
-  $("#ap-preview-box").innerHTML = '<div class="empty">Klik "Preview 1 Utas" buat lihat contoh hasil AI</div>';
-  await loadAutopostPersonas();
-  try {
-    const c = await api("/api/autopost?handle="+h);
-    setApState(c.enabled);
-    $("#ap-lang").value = c.lang || "id";
-    $("#ap-niches").value = (c.niches||[]).join("\n");
-    $("#ap-styleurls").value = (c.style_urls||[]).join("\n");
-    $("#ap-guide").value = c.style_guide || "";
-    $("#ap-ppd").value = c.posts_per_day || 3;
-    $("#ap-pmin").value = c.num_parts_min || 1;
-    $("#ap-pmax").value = c.num_parts_max || 3;
-    $("#ap-hours").value = (c.best_hours||[8,12,18,21]).join(", ");
-    if (c.persona_id) $("#ap-persona").value = c.persona_id;
-  } catch(e){ toast("gagal load config: "+e.message,"err"); }
-}
-function setApState(on) {
-  $("#ap-state-label").textContent = on ? "ON ✅" : "OFF";
-  $("#ap-state-label").style.color = on ? "var(--ok)" : "var(--muted)";
-}
-$("#ap-handle").addEventListener("change", loadAutopost);
-function apPayload() {
-  return {
-    handle: $("#ap-handle").value,
-    lang: $("#ap-lang").value,
-    niches: $("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),
-    style_urls: $("#ap-styleurls").value.split("\n").map(s=>s.trim()).filter(Boolean),
-    style_guide: $("#ap-guide").value.trim(),
-    posts_per_day: parseInt($("#ap-ppd").value)||3,
-    num_parts_min: parseInt($("#ap-pmin").value)||1,
-    num_parts_max: parseInt($("#ap-pmax").value)||3,
-    best_hours: $("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),
-    persona_id: $("#ap-persona").value ? parseInt($("#ap-persona").value) : null,
-  };
-}
-$("#ap-save").addEventListener("click", async ()=>{
-  const p = apPayload();
-  if (!p.niches.length) return toast("isi minimal 1 niche","err");
-  try { await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
-    toast("config tersimpan ✓","ok");
-  } catch(e){ toast("gagal: "+e.message,"err"); }
-});
-$("#ap-toggle").addEventListener("click", async ()=>{
-  const h = $("#ap-handle").value;
-  // simpan config dulu biar toggle nyimpen setting terbaru
-  const p = apPayload();
-  if (!p.niches.length) return toast("isi niche dulu sebelum ON","err");
-  try {
-    await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) });
-    const j = await api("/api/autopost/toggle", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({handle:h}) });
-    setApState(j.enabled);
-    toast(j.enabled ? "Auto-post ON ✅" : "Auto-post OFF","ok");
-  } catch(e){ toast("gagal: "+e.message,"err"); }
-});
-$("#ap-preview").addEventListener("click", async ()=>{
-  const p = apPayload();
-  if (!p.niches.length) return toast("isi niche dulu","err");
-  // simpan biar preview pakai guide terbaru
-  await api("/api/autopost/save", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(p) }).catch(()=>{});
-  const btn = $("#ap-preview"); const old=btn.innerHTML;
-  btn.disabled=true; btn.innerHTML='<span class="spin"></span> generating...';
-  $("#ap-preview-box").innerHTML='<div class="empty"><span class="spin"></span> AI bikin utas...</div>';
-  try {
-    const j = await api("/api/autopost/generate_now", { method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({handle:$("#ap-handle").value, num_parts:parseInt($("#ap-pmax").value)||2}) });
-    $("#ap-preview-box").innerHTML = `<div class="post"><div class="top">
-      <span class="handle">niche: ${esc(j.niche)}</span><span class="tag">preview</span></div>
-      <div class="txt">${esc(j.text)}</div></div>
-      <div class="hint">Ini cuma preview, gak dijadwal. Kalau Auto-post ON, sistem bikin & jadwalin sendiri tiap hari.</div>`;
-    toast("preview jadi ✓","ok");
-  } catch(e){ $("#ap-preview-box").innerHTML=`<div class="empty">error: ${e.message}</div>`; toast("gagal: "+e.message,"err"); }
-  finally { btn.disabled=false; btn.innerHTML=old; }
-});
-
-// ── ANALYTICS ──
-$("#btn-insload").addEventListener("click", async ()=>{
-  const handle = $("#ins-handle").value;
-  const sum = $("#analytics-summary");
-  const list = $("#insight-list");
-  $("#ana-note").textContent = "(ambil metrik tiap post, bisa 20-40 detik)";
-  sum.innerHTML = ''; list.innerHTML='<div class="empty"><span class="spin"></span> ngitung performa akun...</div>';
-  try {
-    const a = await api(`/api/analytics?handle=${handle}&limit=20`);
-    $("#ana-note").textContent = `${a.posts_analyzed} post dianalisis`;
-    // kartu ringkasan
-    const t = a.totals;
-    sum.innerHTML = `<div class="ins" style="gap:10px">
-      ${anaBox('👁 Views', fmtNum(t.views))}
-      ${anaBox('❤️ Likes', fmtNum(t.likes))}
-      ${anaBox('💬 Replies', fmtNum(t.replies))}
-      ${anaBox('🔁 Reposts', fmtNum(t.reposts))}
-      ${anaBox('💭 Quotes', fmtNum(t.quotes))}
-      ${anaBox('📊 Eng. Rate', a.engagement_rate+'%', 'var(--ok)')}
-      ${anaBox('📈 Avg Views', fmtNum(a.avg_views))}
-    </div>`;
-    // top posts
-    if (!a.top_posts || !a.top_posts.length){
-      list.innerHTML='<div class="empty">belum ada post terkirim buat dianalisis</div>'; return;
-    }
-    list.innerHTML = '<h2 style="font-size:13px;color:var(--muted);margin:20px 0 12px;text-transform:uppercase;letter-spacing:.06em">🏆 Top Post</h2>' +
-      a.top_posts.map((p,i)=>`<div class="post">
-      <div class="top"><span class="handle">#${i+1} · ${fmtNum(p.views)} views</span>
-        <span class="meta">${p.timestamp?new Date(p.timestamp).toLocaleDateString("id-ID"):""}</span></div>
-      <div class="txt">${esc(p.text)}</div>
-      <div class="ins" style="margin-top:8px;gap:8px">
-        ${miniStat('❤️',p.likes)} ${miniStat('💬',p.replies)} ${miniStat('🔁',p.reposts)} ${miniStat('💭',p.quotes)}
-      </div>
-      ${p.permalink?`<div class="actions"><a href="${p.permalink}" target="_blank"><button class="sm ghost">Buka di Threads</button></a></div>`:""}
-    </div>`).join("");
-  } catch(e){
-    $("#ana-note").textContent = "";
-    list.innerHTML=`<div class="empty">error: ${esc(e.message)}</div>`;
-  }
-});
-function anaBox(label, val, color){
-  return `<div class="box" style="min-width:90px"><div class="n" style="${color?'color:'+color:''}">${val}</div><div class="l">${label}</div></div>`;
-}
-function miniStat(icon, n){ return `<div class="box" style="min-width:56px;padding:5px 9px"><div class="n" style="font-size:13px">${fmtNum(n||0)}</div><div class="l">${icon}</div></div>`; }
-function fmtNum(n){ n=n||0; if(n>=1000000) return (n/1000000).toFixed(1)+'M'; if(n>=1000) return (n/1000).toFixed(1)+'K'; return ''+n; }
-
-// ── AKUN ──
-async function loadAkun() {
-  try {
-    const accs = await api("/api/accounts");
-    const el = $("#akun-list");
-    if (!accs.length){ el.innerHTML='<div class="empty">belum ada akun</div>'; return; }
-    el.innerHTML = accs.map(a=>`<div class="persona-item">
-      <div class="row" style="justify-content:space-between">
-        <span class="pn">@${esc(a.handle)}</span>
-        <button class="sm danger" onclick="delAkun('${esc(a.handle)}')">Hapus</button>
-      </div>
-      <div class="pd">${a.user_id?'id: '+esc(a.user_id):'terhubung'}</div>
-    </div>`).join("");
-  } catch(e){ $("#akun-list").innerHTML=`<div class="empty">error: ${e.message}</div>`; }
-}
-// ── OAuth connect (cara termudah) ──
-const OAUTH_HTTPS = "https://localhost:8456";
-$("#acc-oauth").addEventListener("click", ()=>{
-  $("#oauth-status").innerHTML = 'buka popup login Meta... (kalau warning sertifikat, klik "lanjut/proceed" — itu localhost kamu sendiri)';
-  const before = accounts.map(a=>a.handle);
-  const w = window.open(OAUTH_HTTPS + "/oauth/start", "oauth", "width=600,height=720");
-  // poll: deteksi akun baru masuk
-  let tries = 0;
-  const iv = setInterval(async ()=>{
-    tries++;
-    try {
-      const accs = await api("/api/accounts");
-      const added = accs.map(a=>a.handle).filter(h=>!before.includes(h));
-      if (added.length){
-        clearInterval(iv);
-        $("#oauth-status").innerHTML = `✅ akun <b>@${esc(added[0])}</b> terhubung!`;
-        toast("akun connected ✓","ok");
-        accounts = accs; fillAccountSelects(); loadAkun();
-        try{ w && w.close(); }catch(e){}
-      }
-    } catch(e){}
-    if (tries > 150){ clearInterval(iv); }  // stop after ~5 min
-  }, 2000);
-});
-
-$("#acc-add").addEventListener("click", async ()=>{
-  const token = $("#acc-token").value.trim();
-  if (!token) return toast("paste token dulu","err");
-  const btn = $("#acc-add"); const old=btn.innerHTML;
-  btn.disabled=true; btn.innerHTML='<span class="spin"></span> validasi...';
-  $("#acc-status").textContent="validasi token ke Meta...";
-  try {
-    const j = await api("/api/account/add", { method:"POST", headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({ token, exchange:$("#acc-exchange").checked }) });
-    $("#acc-status").innerHTML = `✅ akun <b>@${esc(j.handle)}</b> ditambah${j.exchanged?' (long-lived 60 hari)':''}`;
-    $("#acc-token").value=""; toast("akun ditambah ✓","ok");
-    await loadAccounts(); loadAkun();  // refresh semua dropdown
-  } catch(e){ $("#acc-status").innerHTML=`⚠ ${esc(e.message)}`; toast("gagal: "+e.message,"err"); }
-  finally { btn.disabled=false; btn.innerHTML=old; }
-});
-window.delAkun = async handle => {
-  if (!confirm(`Hapus akun @${handle}? Token dihapus dari sistem.`)) return;
-  try {
-    await api("/api/account/delete", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({handle}) });
-    toast("akun dihapus","ok"); await loadAccounts(); loadAkun();
-  } catch(e){ toast("gagal: "+e.message,"err"); }
-};
-
-// ── init ──
-(async()=>{
-  try { await loadAccounts(); await loadGenPersonas(); } catch(e){ toast("gagal load akun: "+e.message,"err"); }
-  updateCount(); loadPosts();
-  setInterval(()=>{ if($("#tab-compose").classList.contains("on")) loadPosts(); }, 20000);
-})();
-</script>
+<script src="/app.js"></script>
 </body>
 </html>

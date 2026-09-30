@@ -166,6 +166,8 @@ class H(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 return self._static("index.html")
+            if path in ("/app.css", "/app.js"):
+                return self._static(path.lstrip("/"))
             if path == "/api/accounts":
                 return self._json(db.list_accounts())
             if path == "/api/posts":
@@ -434,9 +436,13 @@ a{{color:#5b8cff}}</style></head><body><div class=box>
         f = WEB / name
         if not f.exists():
             return self._json({"error": "no ui"}, 404)
+        ext = f.suffix.lower()
+        ctype = {".html": "text/html; charset=utf-8",
+                 ".css": "text/css; charset=utf-8",
+                 ".js": "application/javascript; charset=utf-8"}.get(ext, "application/octet-stream")
         data = f.read_bytes()
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
