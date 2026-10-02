@@ -175,6 +175,18 @@ def due_posts(now=None):
     return due
 
 
+def count_pending_auto(handle, now=None):
+    """Hitung post auto yg masih 'scheduled' (belum kepost) buat handle ini.
+    Dipakai logika jaga-stok autopost: kalau < posts_per_day, isi lagi."""
+    con = connect()
+    rows = con.execute(
+        "SELECT scheduled_at FROM posts WHERE handle=? AND source='auto' "
+        "AND status='scheduled'", (handle,)
+    ).fetchall()
+    con.close()
+    return len(rows)
+
+
 # ── media ───────────────────────────────────────────────────────────────
 def add_media(post_id, part_index, r2_key, public_url, filename=None, size=None):
     con = connect()
@@ -187,7 +199,8 @@ def add_media(post_id, part_index, r2_key, public_url, filename=None, size=None)
 
 
 def get_media_urls(post_id, num_parts):
-    """Return list URL per part_index (None kalau part itu text-only)."""
+    """Return list URL per part_index (None kalau part itu text-only).
+    part_index negatif (mis -1 = gambar reply soft-sell) TIDAK diikutkan ke utas."""
     con = connect()
     rows = con.execute(
         "SELECT part_index, public_url FROM media WHERE post_id=?", (post_id,)
@@ -199,6 +212,16 @@ def get_media_urls(post_id, num_parts):
         if 0 <= idx < num_parts:
             urls[idx] = r["public_url"]
     return urls
+
+
+def get_softsell_image(post_id):
+    """URL gambar buat reply soft-sell (disimpan di part_index = -1). None kalau gak ada."""
+    con = connect()
+    row = con.execute(
+        "SELECT public_url FROM media WHERE post_id=? AND part_index=-1 LIMIT 1", (post_id,)
+    ).fetchone()
+    con.close()
+    return row["public_url"] if row else None
 
 
 def clear_media(post_id):
@@ -226,16 +249,13 @@ def list_library(limit=100):
     return [dict(r) for r in rows]
 
 
-# ── personas ────────────────────────────────────────────────────────────
+# ── personas (UNIVERSAL: 1 persona kepake semua akun) ─────────────────────
 def list_personas(handle=None):
+    """Semua persona bersifat universal (kepake di semua akun). Param handle
+    diabaikan (dipertahankan buat kompatibilitas pemanggil lama)."""
     con = connect()
-    if handle:
-        rows = con.execute(
-            "SELECT * FROM personas WHERE handle=? ORDER BY is_default DESC, name",
-            (handle,)).fetchall()
-    else:
-        rows = con.execute(
-            "SELECT * FROM personas ORDER BY handle, is_default DESC, name").fetchall()
+    rows = con.execute(
+        "SELECT * FROM personas ORDER BY is_default DESC, name").fetchall()
     con.close()
     out = []
     for r in rows:
@@ -258,9 +278,11 @@ def get_persona(pid):
     return d
 
 
-def save_persona(handle, name, description=None, system_prompt=None, lang="id",
+def save_persona(handle="*", name=None, description=None, system_prompt=None, lang="id",
                  reference_urls=None, learned_style=None, sample_posts=None,
                  is_default=0, pid=None):
+    """Simpan persona universal. handle disimpan '*' (penanda universal)."""
+    handle = handle or "*"
     con = connect()
     ref = json.dumps(reference_urls or [], ensure_ascii=False)
     samp = json.dumps(sample_posts or [], ensure_ascii=False)
@@ -280,9 +302,8 @@ def save_persona(handle, name, description=None, system_prompt=None, lang="id",
             (handle, name, description, system_prompt, lang, ref, learned_style,
              samp, is_default, now_iso()))
         out_id = cur.lastrowid
-    if is_default:  # unset default lain di akun sama
-        con.execute("UPDATE personas SET is_default=0 WHERE handle=? AND id!=?",
-                    (handle, out_id))
+    if is_default:  # universal: cuma 1 default global
+        con.execute("UPDATE personas SET is_default=0 WHERE id!=?", (out_id,))
     con.commit(); con.close()
     return out_id
 

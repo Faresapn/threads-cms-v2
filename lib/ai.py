@@ -104,6 +104,87 @@ def fetch_thread_texts(urls, handle=None):
     return texts[:30]
 
 
+# ── reply soft-sell: teks CTA dari deskripsi produk ────────────────────────
+def softsell_reply_text(product_desc, link="", lang="id"):
+    """Bikin teks reply soft-sell natural dari deskripsi singkat produk.
+    Dipakai di reply bawah thread (bareng gambar produk), BUKAN di utas.
+    link: opsional, kalau diisi ditaruh di akhir. Return teks siap-post."""
+    if not product_desc or not product_desc.strip():
+        return link or ""
+    lang_rule = ("Bahasa Indonesia santai, ramah, kayak rekomen ke temen."
+                 if lang == "id" else
+                 "Casual friendly English, like recommending to a friend.")
+    sys = (
+        "Kamu copywriter soft-selling. Bikin 1 reply PENDEK (2-4 kalimat) buat "
+        "nawarin produk secara halus, muncul SETELAH thread story (bukan hard-sell).\n"
+        "ATURAN:\n"
+        f"- {lang_rule}\n"
+        "- JANGAN pakai em-dash. Pakai koma/titik.\n"
+        "- Nyambung natural dari cerita, bukan iklan kaku.\n"
+        "- Sebut manfaat/hasil, bukan fitur teknis doang.\n"
+        "- Tutup dgn ajakan halus (cek, lihat, coba).\n"
+        "- JANGAN tulis link (link ditambahin sistem terpisah).\n"
+        "- Output HANYA teks reply, tanpa tanda kutip."
+    )
+    user = f"Deskripsi produk: {product_desc.strip()}"
+    out = _chat([
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user}
+    ], max_tokens=400)
+    out = out.replace("—", ", ").replace(" –", ",").strip().strip('"')
+    if link:
+        out = f"{out}\n\n{link}"
+    return out
+
+
+# ── INSTANT CONTENT: LLM nentuin sendiri jumlah part + isi dari persona+judul ──
+def generate_instant(persona, title, desc="", lang=None):
+    """Generate konten instant. LLM bebas nentuin berapa part (1 post atau thread)
+    yang paling pas buat judul + gaya persona. Minim input: judul + desk singkat.
+    persona: dict {name, system_prompt, learned_style, sample_posts, lang}
+    Return teks siap-post (part dipisah '---' kalau thread)."""
+    lang = lang or persona.get("lang", "id")
+    style = persona.get("learned_style") or ""
+    custom = persona.get("system_prompt") or ""
+    samples = persona.get("sample_posts") or []
+    pname = persona.get("name") or "default"
+    lang_rule = ("Bahasa Indonesia santai, natural, relatable."
+                 if lang == "id" else
+                 "Casual natural English, relatable tone.")
+    sys = (
+        f"Kamu content creator Threads dgn PERSONA: {pname}.\n"
+    )
+    if custom:
+        sys += f"KARAKTER: {custom}\n"
+    if style:
+        sys += f"\nGAYA WAJIB DITIRU (dari referensi):\n{style}\n"
+    if samples:
+        ex = "\n---\n".join(samples[:4])
+        sys += f"\nCONTOH POST GAYA INI:\n{ex}\n"
+    sys += (
+        "\nTUGAS: bikin konten Threads dari judul yg dikasih. KAMU yg nentuin sendiri "
+        "formatnya: kalau cocok 1 post pendek ya 1 post, kalau butuh thread panjang "
+        "(2-6 part) ya bikin thread. Pilih yg paling natural buat topik + gaya ini.\n\n"
+        "ATURAN:\n"
+        f"- {lang_rule}\n"
+        "- JANGAN pakai em-dash (—). Pakai koma/titik.\n"
+        "- Kalau thread: pisah tiap part dgn baris berisi '---' doang. Part 1 = hook kuat.\n"
+        "- Kalau 1 post: gak usah ada '---'.\n"
+        "- Tulis kayak manusia, natural, ada opini/emosi. BUKAN gaya AI kaku.\n"
+        "- Konten utuh siap-post. JANGAN kasih penjelasan/meta, langsung isinya."
+    )
+    user = f"Judul/ide: {title}"
+    if desc and desc.strip():
+        user += f"\nDeskripsi tambahan: {desc.strip()}"
+    user += "\n\nBikin kontennya sekarang, pilih format yg paling pas."
+    out = _chat([
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user}
+    ], max_tokens=2600)
+    out = out.replace("—", ", ").replace(" –", ",")
+    return _trim_incomplete(out.strip())
+
+
 # ── analisis gaya dari contoh post ─────────────────────────────────────────
 def learn_style(texts, lang="id"):
     """Kasih AI contoh post → dia rangkum ciri gaya nulis (buat dipakai generate)."""
@@ -181,19 +262,31 @@ def generate(topic, persona, num_parts=1, lang=None, has_link=False, extra_brief
 
 # ── random auto-post (edukasi, niche-based) ─────────────────────────────────
 def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
-                    topic_hint=None):
+                    topic_hint=None, hook_examples=None, hook_name=None):
     """Bikin utas edukasi random sesuai niche + style guide referensi.
     lang: 'id' atau 'en' (ikut bahasa akun).
     persona: opsional, kalau ada dipakai buat nambah karakter.
+    hook_examples: list contoh hook (dari hook library / referensi user) biar
+                   opening tiap post BEDA, gak template. hook_name = nama tipe-nya.
     Return teks siap-post (part dipisah '---').
     """
     lang_rule = ("Bahasa Indonesia santai, ngobrol, relatable."
                  if lang == "id" else
                  "English, casual but insightful, global audience tone.")
+    hook_block = ""
+    if hook_examples:
+        ex = "\n".join(f"  - {h}" for h in hook_examples[:6])
+        tipe = f" (tipe: {hook_name})" if hook_name else ""
+        hook_block = (
+            f"\nHOOK WAJIB{tipe}: Bagian 1 HARUS pakai gaya hook di bawah ini. "
+            f"Tiru POLA/vibe-nya, bikin yang BARU & spesifik buat niche ini, JANGAN copy mentah:\n"
+            f"{ex}\n"
+        )
     sys = (
         "Kamu content creator Threads jago bikin utas edukasi yg viral & natural.\n\n"
         f"NICHE: {niche}\n\n"
-        f"GAYA WAJIB DITIRU:\n{style_guide}\n\n"
+        f"GAYA WAJIB DITIRU:\n{style_guide}\n"
+        f"{hook_block}\n"
         "ATURAN:\n"
         f"- {lang_rule}\n"
         "- JANGAN pakai em-dash (—). Pakai koma/titik.\n"

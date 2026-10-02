@@ -11,3 +11,4 @@ cms.log
 app.json
 tls-key.pem
 tls-cert.pem
+data/analytics/

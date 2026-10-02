@@ -5,11 +5,67 @@ OAuth langsung kepakai. Support post chain + image (via URL publik R2).
 """
 import json, time, urllib.parse, urllib.request, urllib.error
 from pathlib import Path
+from datetime import date, datetime
 
 GRAPH = "https://graph.threads.net"
 # Reuse token store bot lama biar gak perlu OAuth ulang.
 TOKENS = Path.home() / ".threads-bot" / "tokens.json"
 _cache = {}
+
+# ── snapshot analytics (pola x-dashboard: simpan harian, baca cache) ─────────
+_ANALYTICS_DIR = Path(__file__).resolve().parent.parent / "data" / "analytics"
+_SNAP_DIR = _ANALYTICS_DIR / "snapshots"
+
+
+def save_analytics_snapshot(limit=20):
+    """Narik all_accounts_analytics (live, lama) lalu simpan snapshot harian.
+    Return snapshot yg disimpan. Dipanggil manual (tombol Update) / cron jam 7."""
+    _SNAP_DIR.mkdir(parents=True, exist_ok=True)
+    data = all_accounts_analytics(limit=limit)
+    today = date.today().isoformat()
+    snap = {"date": today, "collected_at": datetime.now().isoformat(),
+            "accounts": data.get("accounts", []), "count": data.get("count", 0)}
+    (_SNAP_DIR / f"{today}.json").write_text(
+        json.dumps(snap, indent=2, ensure_ascii=False))
+    (_ANALYTICS_DIR / "latest.json").write_text(
+        json.dumps({"date": today}, indent=2))
+    return snap
+
+
+def load_latest_snapshot():
+    """Baca snapshot terakhir (instant, gak narik API). None kalau belum ada."""
+    latest = _ANALYTICS_DIR / "latest.json"
+    if not latest.exists():
+        # fallback: cari file snapshot terbaru
+        if _SNAP_DIR.exists():
+            files = sorted(_SNAP_DIR.glob("*.json"), reverse=True)
+            if files:
+                return json.loads(files[0].read_text())
+        return None
+    d = json.loads(latest.read_text())
+    p = _SNAP_DIR / f"{d['date']}.json"
+    return json.loads(p.read_text()) if p.exists() else None
+
+
+def load_trend(days=14):
+    """Tren harian: total views + engagement per tanggal dari semua snapshot.
+    Buat line chart. Return list {date, total_views, total_eng, per_handle}."""
+    if not _SNAP_DIR.exists():
+        return []
+    out = []
+    files = sorted(_SNAP_DIR.glob("*.json"))[-days:]
+    for f in files:
+        try:
+            snap = json.loads(f.read_text())
+        except Exception:
+            continue
+        accs = snap.get("accounts", [])
+        tv = sum(a.get("views", 0) for a in accs)
+        te = sum(a.get("engagement_total", 0) for a in accs)
+        per = {a.get("handle"): a.get("views", 0) for a in accs}
+        out.append({"date": snap.get("date"), "total_views": tv,
+                    "total_eng": te, "per_handle": per})
+    return out
 
 
 def _tokens():
@@ -169,7 +225,8 @@ def publishing_limit(handle):
 
 
 def list_live_posts(handle, limit=25):
-    """Daftar post terkirim dari Threads API (bukan queue lokal)."""
+    """Daftar post terkirim dari Threads API (bukan queue lokal).
+    Retry 2x kalo kena 500 (Threads API kadang hiccup random)."""
     tok = _tokens().get(handle)
     if not tok:
         raise RuntimeError(f"token @{handle} gak ada")
@@ -178,7 +235,21 @@ def list_live_posts(handle, limit=25):
         raise RuntimeError("gak dapet user id")
     url = (f"{GRAPH}/v1.0/{uid}/threads?fields=id,media_type,text,permalink,"
            f"timestamp,is_reply&limit={limit}&access_token={urllib.parse.quote(tok)}")
-    r = _http(url)
+    last_err = None
+    for attempt in range(3):
+        try:
+            r = _http(url)
+            break
+        except urllib.error.HTTPError as e:
+            last_err = e
+            if (e.code >= 500 or e.code == 429 or e.code == 403) and attempt < 2:
+                time.sleep(2 * (attempt + 1))
+                continue
+            raise
+    else:
+        if last_err:
+            raise last_err
+        raise RuntimeError("gagal fetch post tanpa error jelas")
     out = []
     for p in r.get("data", []):
         out.append({
@@ -193,17 +264,33 @@ def list_live_posts(handle, limit=25):
 
 
 def post_insight(handle, post_id):
-    """Metrik 1 post: views, likes, replies, reposts, quotes."""
+    """Metrik 1 post: views, likes, replies, reposts, quotes.
+    Retry kalo kena rate-limit (429/403/500) — Threads batesin call insight."""
     tok = _tokens().get(handle)
     if not tok:
         raise RuntimeError(f"token @{handle} gak ada")
     metrics = "views,likes,replies,reposts,quotes"
     url = (f"{GRAPH}/v1.0/{post_id}/insights?metric={metrics}"
            f"&access_token={urllib.parse.quote(tok)}")
-    try:
-        r = _http(url)
-    except urllib.error.HTTPError as e:
-        return {"error": e.read().decode()[:200]}
+    for attempt in range(3):
+        try:
+            r = _http(url)
+            break
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode()[:200]
+            except Exception:
+                pass
+            # 429=rate limit, 403 sering juga rate-limit/transient, 5xx=server hiccup
+            retryable = e.code in (429, 500, 502, 503) or \
+                (e.code == 403 and ("limit" in body.lower() or "rate" in body.lower() or "reduce" in body.lower()))
+            if retryable and attempt < 2:
+                time.sleep(2 * (attempt + 1))
+                continue
+            return {"error": body or f"HTTP {e.code}"}
+    else:
+        return {"error": "rate-limit, gagal setelah 3x coba"}
     out = {}
     for m in r.get("data", []):
         name = m.get("name")
@@ -232,10 +319,12 @@ def account_analytics(handle, limit=25):
         return {"error": str(e)[:180]}
     totals = {"views": 0, "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
     detailed = []
-    for p in posts:
+    for i, p in enumerate(posts):
         pid = p.get("id")
         if not pid or p.get("is_reply"):
             continue
+        if i:
+            time.sleep(0.25)  # jeda antar-call biar gak kena rate-limit insight
         ins = post_insight(handle, pid)
         if isinstance(ins, dict) and not ins.get("error"):
             for k in totals:
@@ -256,6 +345,35 @@ def account_analytics(handle, limit=25):
         "avg_views": round(views / n) if n else 0,
         "top_posts": top, "all_posts": detailed,
     }
+
+
+def all_accounts_analytics(limit=25):
+    """Banding performa semua akun. Loop tiap akun, ringkas metrik utama,
+    urutin dari views terbanyak. Akun yg error ditandai, gak bikin gagal total."""
+    rows = []
+    for handle in _tokens().keys():
+        a = account_analytics(handle, limit=limit)
+        if a.get("error"):
+            rows.append({"handle": handle, "error": a["error"][:120],
+                         "views": 0, "likes": 0, "replies": 0, "reposts": 0,
+                         "engagement_total": 0, "engagement_rate": 0,
+                         "avg_views": 0, "posts_analyzed": 0})
+            continue
+        t = a["totals"]
+        rows.append({
+            "handle": handle,
+            "views": t["views"], "likes": t["likes"],
+            "replies": t["replies"], "reposts": t["reposts"],
+            "quotes": t.get("quotes", 0),
+            "engagement_total": a["engagement_total"],
+            "engagement_rate": a["engagement_rate"],
+            "avg_views": a["avg_views"],
+            "posts_analyzed": a["posts_analyzed"],
+        })
+    ranked = sorted(rows, key=lambda r: r["views"], reverse=True)
+    for i, r in enumerate(ranked):
+        r["rank"] = i + 1
+    return {"ok": True, "accounts": ranked, "count": len(ranked)}
 
 
 def refresh_token(handle):
@@ -383,7 +501,8 @@ def oauth_authorize_url(redirect_uri):
     cfg = _app_config()
     app_id = cfg.get("app_id")
     scope = cfg.get("scope", "threads_basic,threads_content_publish,"
-                             "threads_manage_replies,threads_manage_insights")
+                             "threads_manage_replies,threads_read_replies,"
+                             "threads_manage_insights")
     if not app_id:
         return None, "app_id gak ada di app.json"
     state = _secrets.token_urlsafe(16)

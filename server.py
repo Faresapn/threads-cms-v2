@@ -33,15 +33,22 @@ PORT = 8455
 OAUTH_PORT = 8456           # HTTPS khusus OAuth callback
 REDIRECT_URI = f"https://localhost:{OAUTH_PORT}/callback"
 _lock = threading.RLock()
+_last_ana_day = None   # tanggal terakhir auto-snapshot analytics jam 7 jalan
 
 
 # ── soft-sell auto-reply ────────────────────────────────────────────────────
 def _softsell_reply(post, results):
-    """Kalau post punya softsell_link, reply link ke thread sendiri.
-    Kalau gak ada link, skip total (murni storytelling)."""
+    """Reply soft-sell di bawah thread (BUKAN di utas). Isinya:
+    - teks CTA auto-generate dari deskripsi produk (softsell_text)
+    - gambar produk (kalau ada, disimpan di media part_index=-1)
+    - link produk di akhir
+    Skip kalau gak ada link DAN gak ada deskripsi DAN gak ada gambar."""
     link = (post.get("softsell_link") or "").strip()
-    if not link:
-        return None  # gak ada link = gak ada reply, storytelling doang
+    desc = (post.get("softsell_text") or "").strip()
+    img = db.get_softsell_image(post["id"])
+    # gak ada bahan soft-sell sama sekali = storytelling murni, skip
+    if not link and not desc and not img:
+        return None
     # cari root post id (post pertama di chain)
     root_id = None
     for r in (results or []):
@@ -50,11 +57,19 @@ def _softsell_reply(post, results):
             break
     if not root_id:
         return {"error": "gak nemu root post id buat reply"}
-    txt = (post.get("softsell_text") or "").strip()
-    reply_text = f"{txt}\n\n{link}" if txt else link
+    # teks reply: auto-generate dari deskripsi produk + link di akhir
+    lang = (post.get("lang") or "id")
     try:
-        res = threads_api.reply_to(post["handle"], root_id, reply_text)
-        print(f"[softsell] reply link ke {root_id}: {res.get('reply_id')}", flush=True)
+        if desc:
+            reply_text = ai.softsell_reply_text(desc, link=link, lang=lang)
+        else:
+            reply_text = link
+    except Exception as e:
+        print(f"[softsell] generate teks gagal, fallback: {e}", flush=True)
+        reply_text = f"{desc}\n\n{link}".strip() if desc else link
+    try:
+        res = threads_api.reply_to(post["handle"], root_id, reply_text, image_url=img)
+        print(f"[softsell] reply ke {root_id}: {res.get('reply_id')} (img={bool(img)})", flush=True)
         return {"ok": True, **res}
     except Exception as e:
         print(f"[softsell] gagal reply: {e}", flush=True)
@@ -62,50 +77,76 @@ def _softsell_reply(post, results):
 
 
 # ── scheduler ─────────────────────────────────────────────────────────────
-def _plan_autopost():
-    """Sekali sehari per akun yg enabled: generate N utas edukasi random,
-    jadwalin di jam-jam terbaik (random menit). Masuk queue sbg source=auto,
-    status scheduled -> user bisa batalin sebelum kepost."""
+def _plan_autopost(only_handle=None):
+    """JAGA STOK: tiap akun enabled, pastiin ada N post 'scheduled' ke depan
+    (N = posts_per_day). Kalau stok < N, generate kekurangannya aja. Begitu 1
+    post kepost, tick berikut ngisi 1 lagi. Toggle OFF = skip total (gak generate
+    baru; post yg udah terjadwal tetep jalan).
+    Tiap post pakai tipe HOOK berbeda (dari hook library + referensi user) biar
+    gak template. Bahasa ikut cfg.lang (id/en) konsisten tiap post.
+    only_handle: kalau diisi, cuma proses akun itu (buat trigger langsung pas save)."""
     import random
-    today = datetime.now(db.WIB).strftime("%Y-%m-%d")
-    for handle in db.list_enabled_autopost():
+    from lib import hooks as _hooks
+    handles = [only_handle] if only_handle else db.list_enabled_autopost()
+    for handle in handles:
         cfg = db.get_autopost(handle)
-        if cfg.get("last_scheduled") == today:
-            continue  # udah digenerate hari ini
+        if only_handle and not cfg.get("enabled"):
+            continue  # dipanggil spesifik tapi akun OFF, skip
         niches = cfg.get("niches") or []
         if not niches:
             print(f"[autopost] @{handle} enabled tapi niche kosong, skip", flush=True)
             continue
-        n = max(1, min(int(cfg.get("posts_per_day", 3)), len(cfg.get("best_hours") or [1])))
+        target = max(1, int(cfg.get("posts_per_day", 3)))
+        have = db.count_pending_auto(handle)
+        need = target - have
+        if need <= 0:
+            continue  # stok cukup, gak usah generate
         hours = list(cfg.get("best_hours") or db.DEFAULT_HOURS)
-        random.shuffle(hours)
-        chosen_hours = sorted(hours[:n])
         persona = db.get_persona(cfg["persona_id"]) if cfg.get("persona_id") else None
         lang = cfg.get("lang", "id")
         guide = cfg.get("style_guide") or db.DEFAULT_STYLE_GUIDE
         pmin = int(cfg.get("num_parts_min", 1)); pmax = int(cfg.get("num_parts_max", 3))
+
+        # pool hook: gabung hook dari library (10 tipe) biar tiap post beda.
+        hook_cats = list(_hooks.HOOK_CATEGORIES.items())
+        random.shuffle(hook_cats)
+
         made = 0
-        for hr in chosen_hours:
+        for i in range(need):
             niche = random.choice(niches)
             nparts = random.randint(pmin, max(pmin, pmax))
+            # pilih tipe hook beda tiap post (rotasi biar gak nabrak)
+            hk_id, hk = hook_cats[(have + i) % len(hook_cats)]
             try:
-                text = ai.generate_random(niche, guide, lang=lang,
-                                          num_parts=nparts, persona=persona)
+                text = ai.generate_random(
+                    niche, guide, lang=lang, num_parts=nparts, persona=persona,
+                    hook_examples=hk.get("examples"), hook_name=hk.get("name"))
             except Exception as e:
                 print(f"[autopost] @{handle} gagal generate ({niche}): {e}", flush=True)
                 continue
-            # jadwal: hari ini jam hr, menit random
+            # jadwal anti-pola: tiap akun punya jitter sendiri (deterministik dari handle)
+            # biar 50 akun gak numpuk di jam sama walau best_hours mirip.
+            import hashlib
+            acct_jitter = int(hashlib.md5(handle.encode()).hexdigest(), 16) % 37  # 0-36 menit offset khas akun
             now = datetime.now(db.WIB)
-            sched = now.replace(hour=hr, minute=random.randint(0, 55),
-                                second=0, microsecond=0)
-            if sched <= now:  # jam udah lewat, geser besok
-                from datetime import timedelta
-                sched = sched + timedelta(days=1)
-            db.new_post(handle, text, scheduled_at=sched.isoformat(), source="auto")
+            from datetime import timedelta
+            slot = None
+            for hr in sorted(hours):
+                cand = now.replace(hour=hr, minute=random.randint(0, 59),
+                                   second=0, microsecond=0)
+                if cand > now:
+                    slot = cand
+                    break
+            if slot is None:  # semua jam hari ini lewat -> besok jam pertama
+                hr = sorted(hours)[0]
+                slot = (now + timedelta(days=1)).replace(
+                    hour=hr, minute=random.randint(0, 59), second=0, microsecond=0)
+            # offset khas-akun + spread acak tiap post -> jam tiap akun beda-beda
+            slot = slot + timedelta(minutes=acct_jitter + random.randint(0, 25))
+            db.new_post(handle, text, scheduled_at=slot.isoformat(), source="auto")
             made += 1
-            print(f"[autopost] @{handle} +1 utas '{niche}' @ {sched.strftime('%d/%m %H:%M')}", flush=True)
-        if made:
-            db.mark_autopost_scheduled(handle, today)
+            print(f"[autopost] @{handle} +1 '{niche}' hook={hk.get('name')} "
+                  f"lang={lang} @ {slot.strftime('%d/%m %H:%M')}", flush=True)
 
 
 def scheduler_loop():
@@ -140,6 +181,17 @@ def scheduler_loop():
                 _plan_autopost()
             except Exception as e:
                 print(f"[autopost] planner err: {e}", flush=True)
+        # auto-snapshot analytics tiap hari jam 7 pagi (sekali per hari)
+        try:
+            global _last_ana_day
+            _now = datetime.now(db.WIB)
+            if _now.hour == 7 and _last_ana_day != _now.date():
+                _last_ana_day = _now.date()
+                print("[analytics] auto-snapshot jam 7 pagi...", flush=True)
+                snap = threads_api.save_analytics_snapshot(limit=20)
+                print(f"[analytics] snapshot tersimpan: {snap.get('count')} akun", flush=True)
+        except Exception as e:
+            print(f"[analytics] auto-snapshot err: {e}", flush=True)
         time.sleep(30)
 
 
@@ -189,6 +241,18 @@ class H(BaseHTTPRequestHandler):
             if path == "/api/insight":
                 return self._json(threads_api.post_insight(
                     q.get("handle", [""])[0], q.get("post_id", [""])[0]))
+            if path == "/api/analytics/all":
+                return self._json(threads_api.all_accounts_analytics(
+                    int(q.get("limit", ["25"])[0])))
+            if path == "/api/analytics/overview":
+                # baca snapshot cache (instant, gak narik API) + tren harian
+                snap = threads_api.load_latest_snapshot()
+                return self._json({
+                    "ok": True,
+                    "snapshot": snap,
+                    "trend": threads_api.load_trend(14),
+                    "has_data": snap is not None,
+                })
             if path == "/api/analytics":
                 return self._json(threads_api.account_analytics(
                     q.get("handle", [""])[0],
@@ -228,7 +292,8 @@ class H(BaseHTTPRequestHandler):
                 pid = db.new_post(body["handle"], body["text"],
                                   body.get("scheduled_at"),
                                   softsell_link=body.get("softsell_link"),
-                                  softsell_text=body.get("softsell_text"))
+                                  softsell_text=body.get("softsell_text"),
+                                  source=body.get("source", "manual"))
                 return self._json({"id": pid, "ok": True})
             if path == "/api/post/update":
                 pid = body["id"]
@@ -292,6 +357,27 @@ class H(BaseHTTPRequestHandler):
                 db.update_persona_style(pid, style)
                 return self._json({"ok": True, "learned_style": style,
                                    "samples_found": len(texts)})
+            if path == "/api/instant":
+                # Instant Content: pilih persona + judul + desk -> LLM auto-generate
+                # (nentuin sendiri jumlah part). Opsi: langsung bikin post draft/jadwal.
+                persona = db.get_persona(int(body["persona_id"])) if body.get("persona_id") else {}
+                if not persona:
+                    return self._json({"error": "persona wajib dipilih"}, 400)
+                title = (body.get("title") or "").strip()
+                if not title:
+                    return self._json({"error": "judul wajib diisi"}, 400)
+                text = ai.generate_instant(
+                    persona, title, desc=body.get("desc", ""),
+                    lang=body.get("lang") or persona.get("lang", "id"))
+                # kalau cuma preview, balikin teks doang
+                if body.get("preview"):
+                    return self._json({"ok": True, "text": text})
+                # bikin post beneran
+                handle = body.get("handle")
+                if not handle:
+                    return self._json({"error": "akun wajib dipilih"}, 400)
+                pid = db.new_post(handle, text, body.get("scheduled_at"), source="instant")
+                return self._json({"ok": True, "id": pid, "text": text})
             if path == "/api/generate":
                 persona = {}
                 if body.get("persona_id"):
@@ -323,11 +409,29 @@ class H(BaseHTTPRequestHandler):
                     num_parts_max=body.get("num_parts_max"),
                     style_urls=body.get("style_urls"),
                     style_guide=body.get("style_guide"))
+                cfg = db.get_autopost(body["handle"])
+                # kalau ON, langsung generate di background biar response cepet
+                # + hasil keliatan seketika (gak nunggu planner 10 menit)
+                if cfg.get("enabled"):
+                    _h = body["handle"]
+                    threading.Thread(target=lambda: _plan_autopost(only_handle=_h),
+                                     daemon=True).start()
                 return self._json({"ok": True, "config": db.get_autopost(body["handle"])})
+            if path == "/api/analytics/refresh":
+                # narik fresh semua akun + simpan snapshot (manual Update / cron)
+                snap = threads_api.save_analytics_snapshot(
+                    limit=int(body.get("limit", 20)))
+                return self._json({"ok": True, "snapshot": snap,
+                                   "trend": threads_api.load_trend(14)})
             if path == "/api/autopost/toggle":
                 cfg = db.get_autopost(body["handle"])
                 new_state = 0 if cfg["enabled"] else 1
                 db.save_autopost(body["handle"], enabled=new_state)
+                # baru di-ON kan: langsung generate di background biar keliatan seketika
+                if new_state:
+                    _h = body["handle"]
+                    threading.Thread(target=lambda: _plan_autopost(only_handle=_h),
+                                     daemon=True).start()
                 return self._json({"ok": True, "enabled": new_state})
             if path == "/api/autopost/generate_now":
                 # generate 1 preview utas (gak dijadwal, buat dicek)
