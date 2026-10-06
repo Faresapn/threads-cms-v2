@@ -300,49 +300,90 @@ def post_insight(handle, post_id):
 
 
 def account_analytics(handle, limit=25):
-    """Agregat performa akun: total post, sum views/likes/replies/reposts/quotes,
-    engagement rate + top post. Ambil dari Threads API (post live + insight)."""
+    """Agregat performa akun pake USER-LEVEL insight (threads_insights).
+    Bener semua waktu, 1 call per metric, no cap 25 post.
+    Views: sum values harian window 90 hari (API max per request), paginate manual.
+    Likes/replies/reposts/quotes: total_value window ~2 tahun.
+    Top post: tetap pake list_live_posts + post_insight (buat ranking top saja).
+    """
+    import time as _time
     tok = _tokens().get(handle)
     if not tok:
         return {"error": f"token @{handle} gak ada"}
     try:
-        posts = list_live_posts(handle, limit=limit)
-    except urllib.error.HTTPError as e:
-        body = ""
+        uid = account_info(handle, force=False).get("id")
+        if not uid:
+            raise RuntimeError("gak dapet user id")
+    except Exception as e:
+        return {"error": f"user id @{handle}: {str(e)[:150]}"}
+
+    now = int(_time.time())
+    # ── VIEWS: sum per-day values, chunked 90d sampai 2 tahun ke belakang ──
+    total_views = 0
+    for i in range(8):  # 8 x 90 = 720 hari (~2 tahun)
+        chunk_until = now - i * 90 * 86400
+        chunk_since = chunk_until - 90 * 86400
+        url = (f"{GRAPH}/v1.0/{uid}/threads_insights?metric=views"
+               f"&since={chunk_since}&until={chunk_until}"
+               f"&access_token={urllib.parse.quote(tok)}")
         try:
-            body = e.read().decode()[:150]
+            r = _http(url)
+            vals = r.get("data", [{}])[0].get("values", [])
+            s = sum(int(v.get("value", 0) or 0) for v in vals)
+            total_views += s
+            # stop awal kalau 0 (akun belum ada aktifitas sejauh itu)
+            if s == 0 and i > 0:
+                break
+        except Exception:
+            break
+
+    # ── likes/replies/reposts/quotes: total_value, window 2 tahun ──
+    totals = {"views": total_views, "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
+    since2y = now - 720 * 86400
+    for m in ("likes", "replies", "reposts", "quotes"):
+        url = (f"{GRAPH}/v1.0/{uid}/threads_insights?metric={m}"
+               f"&since={since2y}&until={now}"
+               f"&access_token={urllib.parse.quote(tok)}")
+        try:
+            r = _http(url)
+            d = r.get("data", [{}])[0]
+            totals[m] = int(d.get("total_value", {}).get("value", 0) or 0)
         except Exception:
             pass
-        return {"error": f"Threads API error ({e.code}) baca post @{handle}. "
-                         f"Cek token/scope akun ini. {body}"}
-    except Exception as e:
-        return {"error": str(e)[:180]}
-    totals = {"views": 0, "likes": 0, "replies": 0, "reposts": 0, "quotes": 0}
+
+    # ── top posts: masih per-post insight, limit kecil (buat ranking saja) ──
     detailed = []
-    for i, p in enumerate(posts):
-        pid = p.get("id")
-        if not pid or p.get("is_reply"):
-            continue
-        if i:
-            time.sleep(0.25)  # jeda antar-call biar gak kena rate-limit insight
-        ins = post_insight(handle, pid)
-        if isinstance(ins, dict) and not ins.get("error"):
-            for k in totals:
-                totals[k] += int(ins.get(k, 0) or 0)
-            detailed.append({
-                "id": pid, "text": p.get("text", "")[:100],
-                "permalink": p.get("permalink"), "timestamp": p.get("timestamp"),
-                **{k: int(ins.get(k, 0) or 0) for k in totals},
-            })
-    n = len(detailed)
+    try:
+        posts = list_live_posts(handle, limit=limit)
+        for i, p in enumerate(posts):
+            pid = p.get("id")
+            if not pid or p.get("is_reply"):
+                continue
+            if i:
+                _time.sleep(0.25)
+            ins = post_insight(handle, pid)
+            if isinstance(ins, dict) and not ins.get("error"):
+                detailed.append({
+                    "id": pid, "text": p.get("text", "")[:100],
+                    "permalink": p.get("permalink"), "timestamp": p.get("timestamp"),
+                    "views": int(ins.get("views", 0) or 0),
+                    "likes": int(ins.get("likes", 0) or 0),
+                    "replies": int(ins.get("replies", 0) or 0),
+                    "reposts": int(ins.get("reposts", 0) or 0),
+                    "quotes": int(ins.get("quotes", 0) or 0),
+                })
+    except Exception:
+        pass
+
+    n_posts = len(detailed)
     views = totals["views"]
     eng = totals["likes"] + totals["replies"] + totals["reposts"] + totals["quotes"]
     eng_rate = round(eng / views * 100, 2) if views else 0
     top = sorted(detailed, key=lambda x: x["views"], reverse=True)[:5]
     return {
-        "ok": True, "handle": handle, "posts_analyzed": n,
+        "ok": True, "handle": handle, "posts_analyzed": n_posts,
         "totals": totals, "engagement_total": eng, "engagement_rate": eng_rate,
-        "avg_views": round(views / n) if n else 0,
+        "avg_views": round(views / n_posts) if n_posts else 0,
         "top_posts": top, "all_posts": detailed,
     }
 

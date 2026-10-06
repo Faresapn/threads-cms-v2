@@ -80,7 +80,9 @@ def fetch_thread_texts(urls, handle=None):
                         texts.append(t)
         except Exception:
             pass
-    # strategi 2: scrape HTML publik dari tiap URL
+    # strategi 2: scrape HTML publik dari tiap URL (og:description legacy)
+    #   Note: Threads SKRG ga ekspos og:description di SSR, strategi ini mayoritas gagal.
+    #   Dipertahankan sbg fast-path kalau suatu saat Meta nyalain lagi SSR.
     for url in urls:
         if not url.strip():
             continue
@@ -101,6 +103,22 @@ def fetch_thread_texts(urls, handle=None):
                     texts.append(t)
         except Exception:
             continue
+    # strategi 3: Playwright scraper (butuh scraper_profile udah login)
+    #   dipake kalau strategi 1 + 2 belum ngasih apa2
+    if not texts:
+        try:
+            from lib import scraper
+            for url in urls:
+                if not url.strip():
+                    continue
+                try:
+                    t = scraper.fetch_post_text(url.strip(), headless=True)
+                    if t and t not in texts:
+                        texts.append(t)
+                except Exception:
+                    continue
+        except Exception:
+            pass
     return texts[:30]
 
 
@@ -185,6 +203,41 @@ def generate_instant(persona, title, desc="", lang=None):
     return _trim_incomplete(out.strip())
 
 
+# ── auto-reply: generate reply nyambung konteks post orang ─────────────────
+def generate_reply(post_text, persona=None, lang="id"):
+    """Bikin reply SINGKAT & natural buat post orang (engagement, bukan spam).
+    post_text: isi post yg mau di-reply.
+    persona: opsional, buat warna gaya.
+    Return teks reply (1-2 kalimat, gak jualan, nyambung konteks)."""
+    lang_rule = ("Bahasa Indonesia santai, kayak bales temen di komentar."
+                 if lang == "id" else
+                 "Casual English, like replying to a friend's post.")
+    pstyle = ""
+    if persona and persona.get("system_prompt"):
+        pstyle = f"\nKarakter kamu: {persona['system_prompt']}\n"
+    sys = (
+        "Kamu user Threads yg lagi scroll dan nemu post menarik, lalu ikut komentar.\n"
+        f"{pstyle}"
+        "TUGAS: bikin 1 reply singkat yg NYAMBUNG sama isi post.\n"
+        "ATURAN KETAT:\n"
+        f"- {lang_rule}\n"
+        "- MAKS 1-2 kalimat pendek. Jangan panjang.\n"
+        "- NYAMBUNG konteks post (nanggepin isinya, bukan asal komen).\n"
+        "- JANGAN jualan, JANGAN promosi, JANGAN taruh link.\n"
+        "- JANGAN pakai em-dash. JANGAN hashtag. JANGAN mention.\n"
+        "- Natural kayak manusia: setuju, nambahin, nanya, atau reaksi jujur.\n"
+        "- Hindari template ('keren banget!', 'setuju bgt'). Spesifik ke isinya.\n"
+        "- Output HANYA teks reply, tanpa tanda kutip."
+    )
+    user = f"Post yg mau di-reply:\n\"{post_text[:600]}\"\n\nTulis 1 reply natural yg nyambung."
+    out = _chat([
+        {"role": "system", "content": sys},
+        {"role": "user", "content": user}
+    ], max_tokens=200)
+    out = out.replace("—", ", ").replace(" –", ",").strip().strip('"')
+    return out
+
+
 # ── analisis gaya dari contoh post ─────────────────────────────────────────
 def learn_style(texts, lang="id"):
     """Kasih AI contoh post → dia rangkum ciri gaya nulis (buat dipakai generate)."""
@@ -262,12 +315,15 @@ def generate(topic, persona, num_parts=1, lang=None, has_link=False, extra_brief
 
 # ── random auto-post (edukasi, niche-based) ─────────────────────────────────
 def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
-                    topic_hint=None, hook_examples=None, hook_name=None):
+                    topic_hint=None, hook_examples=None, hook_name=None,
+                    avoid_topics=None):
     """Bikin utas edukasi random sesuai niche + style guide referensi.
     lang: 'id' atau 'en' (ikut bahasa akun).
     persona: opsional, kalau ada dipakai buat nambah karakter.
     hook_examples: list contoh hook (dari hook library / referensi user) biar
                    opening tiap post BEDA, gak template. hook_name = nama tipe-nya.
+    avoid_topics: list teks/hook post yg SUDAH pernah dibahas akun ini. LLM wajib
+                  bikin topik yg beda total dari daftar ini (anti-duplikat).
     Return teks siap-post (part dipisah '---').
     """
     lang_rule = ("Bahasa Indonesia santai, ngobrol, relatable."
@@ -282,11 +338,21 @@ def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
             f"Tiru POLA/vibe-nya, bikin yang BARU & spesifik buat niche ini, JANGAN copy mentah:\n"
             f"{ex}\n"
         )
+    avoid_block = ""
+    if avoid_topics:
+        av = "\n".join(f"  - {a}" for a in avoid_topics[:12])
+        avoid_block = (
+            f"\nTOPIK YANG SUDAH DIBAHAS (HARAM DIULANG):\n{av}\n"
+            "WAJIB: pilih topik/sudut yang BENAR-BENAR BEDA dari daftar di atas. "
+            "Jangan ngebahas hal yang sama walau beda kata. Kalau niche-nya mirip, "
+            "cari sub-topik, angle, atau kasus spesifik yang belum pernah muncul.\n"
+        )
     sys = (
         "Kamu content creator Threads jago bikin utas edukasi yg viral & natural.\n\n"
         f"NICHE: {niche}\n\n"
         f"GAYA WAJIB DITIRU:\n{style_guide}\n"
-        f"{hook_block}\n"
+        f"{hook_block}"
+        f"{avoid_block}\n"
         "ATURAN:\n"
         f"- {lang_rule}\n"
         "- JANGAN pakai em-dash (—). Pakai koma/titik.\n"
@@ -302,7 +368,7 @@ def generate_random(niche, style_guide, lang="id", num_parts=2, persona=None,
     user = f"Bikin 1 utas edukasi tentang niche '{niche}'."
     if topic_hint:
         user += f" Fokus ke sudut: {topic_hint}."
-    user += " Pilih angle yg fresh & spesifik, jangan generik."
+    user += " Pilih angle yg fresh & spesifik, jangan generik, jangan ngulang topik lama."
     out = _chat([
         {"role": "system", "content": sys},
         {"role": "user", "content": user}

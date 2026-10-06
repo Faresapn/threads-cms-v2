@@ -9,6 +9,51 @@ function esc(s){ return (s||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">"
 function fmtNum(n){ n=n||0; if(n>=1e6) return (n/1e6).toFixed(1)+'M'; if(n>=1e3) return (n/1e3).toFixed(1)+'K'; return ''+n; }
 function curAccount(){ return $("#global-account").value; }
 
+// ── REFERENSI UTAS REPEATER (reusable) ────────────────────────────────
+// Pattern: container div dengan N textarea (1 per utas) + tombol "+ Tambah utas".
+// Tiap textarea = 1 utas lengkap, pisah antar-post pake "---" di baris sendiri.
+// Backend terima array of string (sample_posts).
+function refsRender(containerId, values){
+  const el = $("#"+containerId);
+  if(!el) return;
+  if(!Array.isArray(values) || !values.length) values = [""];
+  const items = values.map((v, i) => `
+    <div class="refs-item" data-idx="${i}">
+      <div class="refs-head">
+        <span class="refs-label">Utas referensi #${i+1}</span>
+        <button type="button" class="sm ghost refs-del" ${values.length===1 && !v ? 'style="display:none"' : ''}>Hapus</button>
+      </div>
+      <textarea class="refs-text sm" placeholder="Paste teks utas di sini. Kalau utas multi-post, pisah tiap post pake baris:&#10;---&#10;&#10;Contoh:&#10;Post pertama disini.&#10;---&#10;Reply dalam utas yg sama.">${esc(v)}</textarea>
+    </div>`).join("");
+  el.innerHTML = `
+    <div class="refs-list">${items}</div>
+    <button type="button" class="sm ghost refs-add" style="margin-top:6px">+ Tambah utas lain</button>
+    <div class="hint">Paste teks utas mentah. Pisah tiap post dalam utas pake <code>---</code>.</div>
+  `;
+  // wire add
+  el.querySelector(".refs-add").onclick = () => {
+    const cur = refsGet(containerId);
+    refsRender(containerId, [...cur, ""]);
+  };
+  // wire delete per item
+  el.querySelectorAll(".refs-del").forEach(btn => {
+    btn.onclick = (e) => {
+      const idx = parseInt(e.target.closest(".refs-item").dataset.idx);
+      const cur = refsGet(containerId);
+      cur.splice(idx, 1);
+      refsRender(containerId, cur.length ? cur : [""]);
+    };
+  });
+}
+function refsGet(containerId){
+  const el = $("#"+containerId);
+  if(!el) return [];
+  return [...el.querySelectorAll(".refs-text")].map(t => t.value.trim()).filter(Boolean);
+}
+function refsSet(containerId, values){
+  refsRender(containerId, values && values.length ? values : [""]);
+}
+
 // ── SVG icons (monoline, Lucide-style) ──
 const ICO = {
   eye:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -38,6 +83,7 @@ $("#theme-btn").addEventListener("click", ()=>{
 // ── NAV ──
 function gotoPage(page){
   curPage = page;
+  try { localStorage.setItem("cms-page", page); } catch(_){}
   $$(".nav-item").forEach(n=>n.classList.toggle("on", n.dataset.page===page));
   $$(".page").forEach(p=>p.classList.remove("on"));
   $("#page-"+page).classList.add("on");
@@ -92,10 +138,11 @@ async function loadDashboard(){
   $("#dash-chart").innerHTML = '<div class="empty"><span class="spin"></span> ambil data Threads...</div>';
   $("#dash-donut").innerHTML = '<div class="empty"><span class="spin"></span></div>';
   try {
-    const a = await api(`/api/analytics?handle=${h}&limit=15`);
+    const a = await api(`/api/analytics?handle=${h}&limit=100`);
     const t = a.totals;
     $("#dash-stats").innerHTML = statCards(t);
-    renderChart("#dash-chart", a.all_posts||[], "views");
+    renderDailyChart("#dash-chart", a.all_posts||[], dashRange);
+    renderRangePills(a.all_posts||[]);
     renderDonut("#dash-donut", t);
   } catch(e){
     $("#dash-stats").innerHTML = statCards({views:0,likes:0,replies:0,reposts:0});
@@ -146,6 +193,136 @@ async function loadDashList(h){
   } catch(e){ $("#dash-list").innerHTML=`<div class="empty">error: ${esc(e.message)}</div>`; }
 }
 let dashFilter = "";
+let dashRange = "7d";  // today | yesterday | 7d | 30d
+
+// Agregat post per tanggal (YYYY-MM-DD) + jumlahkan engagement total
+function aggregateByDay(posts){
+  const by = {};
+  for(const p of posts){
+    if(!p.timestamp) continue;
+    const d = new Date(p.timestamp);
+    if(isNaN(d)) continue;
+    const key = d.toISOString().slice(0,10); // UTC date (Threads timestamp is ISO)
+    const eng = (p.likes||0)+(p.replies||0)+(p.reposts||0)+(p.quotes||0);
+    if(!by[key]) by[key] = {views:0, likes:0, replies:0, reposts:0, quotes:0, engagement:0, count:0};
+    by[key].views += p.views||0;
+    by[key].likes += p.likes||0;
+    by[key].replies += p.replies||0;
+    by[key].reposts += p.reposts||0;
+    by[key].quotes += p.quotes||0;
+    by[key].engagement += eng;
+    by[key].count += 1;
+  }
+  return by;
+}
+
+// Dapatkan daftar tanggal (YYYY-MM-DD) sesuai filter rentang
+function dateRangeFor(range){
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // local midnight
+  const toKey = d => d.toISOString().slice(0,10);
+  if(range === "today")     return [toKey(today)];
+  if(range === "yesterday"){ const y=new Date(today); y.setDate(y.getDate()-1); return [toKey(y)]; }
+  const n = range === "30d" ? 30 : 7;
+  const out = [];
+  for(let i=n-1; i>=0; i--){ const d=new Date(today); d.setDate(d.getDate()-i); out.push(toKey(d)); }
+  return out;
+}
+
+function renderRangePills(posts){
+  const el = $("#dash-range-pills");
+  if(!el) return;
+  const opts = [["today","Hari ini"],["yesterday","Kemarin"],["7d","7 hari"],["30d","30 hari"]];
+  el.innerHTML = opts.map(([v,l]) =>
+    `<button class="pill ${dashRange===v?'on':''}" data-range="${v}">${l}</button>`
+  ).join("");
+  el.querySelectorAll("button[data-range]").forEach(b => {
+    b.onclick = () => {
+      dashRange = b.dataset.range;
+      el.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.range===dashRange));
+      renderDailyChart("#dash-chart", posts, dashRange);
+    };
+  });
+}
+
+function renderDailyChart(sel, posts, range){
+  const el = $(sel);
+  const by = aggregateByDay(posts);
+  const dates = dateRangeFor(range);
+  const data = dates.map(d => (by[d]?.views) || 0);
+  const total = data.reduce((s,v)=>s+v,0);
+  if(!total){
+    el.innerHTML = `<div class="empty" style="padding:60px 20px">Belum ada views di rentang ini<br><span class="hint">${range==='today'?'post hari ini belum ada / insight belum muncul':'coba rentang lebih panjang'}</span></div>`;
+    return;
+  }
+  const w=600, h=200, padL=38, padR=10, padT=12, padB=28;
+  const max = Math.max(...data, 1);
+  const iw = w-padL-padR, ih = h-padT-padB;
+  const step = data.length>1 ? iw/(data.length-1) : 0;
+  const pts = data.map((v,i)=>[padL+i*step, padT+ih-(v/max)*ih]);
+  const line = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area = line+` L${(padL+(data.length-1)*step).toFixed(1)} ${padT+ih} L${padL} ${padT+ih} Z`;
+  let grid='', ylab='';
+  for(let g=0; g<=3; g++){
+    const y = padT + (ih/3)*g;
+    const val = Math.round(max - (max/3)*g);
+    grid += `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${w-padR}" y2="${y.toFixed(1)}" stroke="var(--chart-grid)" stroke-width="1"/>`;
+    ylab += `<text x="${padL-8}" y="${(y+3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--faint)" font-family="var(--mono)">${fmtNum(val)}</text>`;
+  }
+  // x-axis labels: tampilkan tgl untuk 7d/30d; "hari ini"/"kemarin" cukup 1 label
+  let xlab = '';
+  if(data.length === 1){
+    xlab = `<text x="${(padL+iw/2).toFixed(1)}" y="${(padT+ih+16).toFixed(1)}" text-anchor="middle" font-size="10" fill="var(--faint)" font-family="var(--mono)">${dates[0]}</text>`;
+  } else {
+    const stride = Math.max(1, Math.ceil(data.length/6));
+    for(let i=0; i<data.length; i+=stride){
+      const x = padL + i*step;
+      const lbl = dates[i].slice(5); // MM-DD
+      xlab += `<text x="${x.toFixed(1)}" y="${(padT+ih+16).toFixed(1)}" text-anchor="middle" font-size="9" fill="var(--faint)" font-family="var(--mono)">${lbl}</text>`;
+    }
+  }
+  // Custom tooltip: hover area tiap titik lebih besar (radius 12) biar gampang kena, dot aslinya tetep kecil (2.5)
+  const hits = pts.map((p,i)=>{
+    const d = dates[i];
+    const info = by[d] || {views:0, likes:0, replies:0, count:0};
+    const label = d.length ? d : '-';
+    const tipHTML = `${label}: ${fmtNum(info.views||0)} views (${info.count||0} post)`;
+    return `<circle class="hit" cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="12" fill="transparent" data-tip="${esc(tipHTML)}" data-x="${p[0].toFixed(1)}" data-y="${p[1].toFixed(1)}"/>`;
+  }).join('');
+  const dots = pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--bg)" stroke="var(--accent)" stroke-width="1.5" pointer-events="none"/>`).join('');
+  el.innerHTML = `<div class="chart-tipwrap" style="position:relative">
+    <svg class="chart" viewBox="0 0 ${w} ${h}">
+      <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/>
+        <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+      ${grid}${ylab}${xlab}
+      <path d="${area}" fill="url(#ag)"/>
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${dots}
+      ${hits}
+    </svg>
+    <div class="chart-tooltip" style="display:none"></div>
+  </div>`;
+  // bind hover tooltip
+  const wrap = el.querySelector(".chart-tipwrap");
+  const tip = el.querySelector(".chart-tooltip");
+  const svg = el.querySelector("svg");
+  el.querySelectorAll("circle.hit").forEach(c => {
+    c.addEventListener("mouseenter", e => {
+      tip.textContent = c.dataset.tip;
+      tip.style.display = "block";
+      // posisi: convert dari viewBox ke px via getBBox + getBoundingClientRect
+      const svgRect = svg.getBoundingClientRect();
+      const scaleX = svgRect.width / w;
+      const scaleY = svgRect.height / h;
+      const px = parseFloat(c.dataset.x) * scaleX;
+      const py = parseFloat(c.dataset.y) * scaleY;
+      tip.style.left = (px + 10) + "px";
+      tip.style.top = (py - 10) + "px";
+    });
+    c.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+  });
+}
 
 // ── CHART (SVG area, gridlines + axis) ──
 function renderChart(sel, posts, key){
@@ -252,8 +429,44 @@ function renderAnalytics(j){
   const tot = accs.reduce((s,a)=>({views:s.views+(a.views||0),likes:s.likes+(a.likes||0),replies:s.replies+(a.replies||0),reposts:s.reposts+(a.reposts||0)}),{views:0,likes:0,replies:0,reposts:0});
   $("#ana-stats").innerHTML = statCards(tot);
   _lastAna = {trend: j.trend||[], accounts: snap.accounts||[]};
-  renderMultiTrend("#ana-bar", j.trend||[], snap.accounts||[]);
+  renderAnaRangePills();
+  renderMultiTrend("#ana-bar", filterTrendByRange(j.trend||[], anaRange), snap.accounts||[]);
   renderRankTable("#ana-rank", snap.accounts||[]);
+}
+
+// state filter untuk analytics
+let anaRange = "7d"; // today | yesterday | 7d | 30d
+
+function filterTrendByRange(trend, range){
+  if(!trend || !trend.length) return trend;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const toKey = d => d.toISOString().slice(0,10);
+  let allowed;
+  if(range === "today")      allowed = new Set([toKey(today)]);
+  else if(range === "yesterday"){ const y=new Date(today); y.setDate(y.getDate()-1); allowed = new Set([toKey(y)]); }
+  else {
+    const n = range === "30d" ? 30 : 7;
+    allowed = new Set();
+    for(let i=0;i<n;i++){ const d=new Date(today); d.setDate(d.getDate()-i); allowed.add(toKey(d)); }
+  }
+  return trend.filter(t => allowed.has((t.date||"").slice(0,10)));
+}
+
+function renderAnaRangePills(){
+  const el = $("#ana-range-pills");
+  if(!el) return;
+  const opts = [["today","Hari ini"],["yesterday","Kemarin"],["7d","7 hari"],["30d","30 hari"]];
+  el.innerHTML = opts.map(([v,l]) =>
+    `<button class="pill ${anaRange===v?'on':''}" data-range="${v}">${l}</button>`
+  ).join("");
+  el.querySelectorAll("button[data-range]").forEach(b => {
+    b.onclick = () => {
+      anaRange = b.dataset.range;
+      el.querySelectorAll("button").forEach(x => x.classList.toggle("on", x.dataset.range===anaRange));
+      if(_lastAna) renderMultiTrend("#ana-bar", filterTrendByRange(_lastAna.trend, anaRange), _lastAna.accounts);
+    };
+  });
 }
 
 // inisial akun buat badge/legend
@@ -276,7 +489,7 @@ function renderMultiTrend(sel, trend, accounts){
     return;
   }
 
-  const w=640, h=320, padL=48, padR=18, padT=18, padB=34;
+  const w=640, h=220, padL=48, padR=18, padT=16, padB=28;
   const iw=w-padL-padR, ih=h-padT-padB;
   // max views lintas semua akun+hari (buat skala Y), abaikan yg di-hide
   let max=1;
@@ -373,15 +586,20 @@ function wireTip(wrap, nodes, htmlFn){
 function renderRankTable(sel, accs){
   const el=$(sel);
   if(!accs.length){ el.innerHTML='<div class="empty">belum ada akun</div>'; return; }
-  const medal=r=>r===1?"🥇":r===2?"🥈":r===3?"🥉":("#"+r);
-  const rows=accs.map(a=>{
-    if(a.error){ return `<tr style="opacity:.55"><td>${medal(a.rank)}</td><td>@${esc(a.handle)}</td><td colspan="6" style="color:var(--err);font-size:12px">⚠ ${esc(a.error)}</td></tr>`; }
-    return `<tr><td>${medal(a.rank)}</td><td>@${esc(a.handle)}</td><td>${fmtNum(a.views)}</td><td>${fmtNum(a.likes)}</td><td>${fmtNum(a.replies)}</td><td>${fmtNum(a.reposts)}</td><td>${a.engagement_rate}%</td><td>${fmtNum(a.avg_views)}</td></tr>`;
+  const medal=r=>r===1?"🥇":r===2?"🥈":r===3?"🥉":(`<span class="rank-num">#${r}</span>`);
+  // top 10 only, compact list buat sidebar (handle + views)
+  const top = accs.slice(0, 10);
+  const rows = top.map(a=>{
+    if(a.error){
+      return `<div class="rank-item err"><span class="rank-pos">${medal(a.rank)}</span><span class="rank-handle">@${esc(a.handle)}</span><span class="rank-err">⚠</span></div>`;
+    }
+    return `<div class="rank-item">
+      <span class="rank-pos">${medal(a.rank)}</span>
+      <span class="rank-handle">@${esc(a.handle)}</span>
+      <span class="rank-views">${fmtNum(a.views)}</span>
+    </div>`;
   }).join("");
-  el.innerHTML=`<div style="overflow-x:auto"><table class="cmp-table" style="width:100%;border-collapse:collapse;font-size:13px">
-    <thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">
-      <th style="padding:8px 6px">#</th><th>Akun</th><th>Views</th><th>Likes</th><th>Replies</th><th>Reposts</th><th>Eng.Rate</th><th>Avg Views</th>
-    </tr></thead><tbody>${rows}</tbody></table></div>`;
+  el.innerHTML = `<div class="rank-list">${rows}</div>`;
 }
 
 // ── tombol Update Data: narik fresh semua akun + simpan snapshot ──
@@ -431,6 +649,9 @@ $("#btn-gen").addEventListener("click", async ()=>{
     p.lang=$("#gen-lang").value||"id";  // dropdown bahasa selalu override (user milih sendiri)
     p.has_link=!!$("#ss-link").value.trim();
     const brief=$("#gen-brief").value.trim(); if(brief) p.brief=brief;
+    // referensi gaya (opsional) — teks utas mentah, dikirim sbg sample_posts
+    const refs = refsGet("gen-refs");
+    if(refs.length){ p.sample_posts = refs; btn.innerHTML='<span class="spin"></span> pakai referensi...'; }
     const j=await api("/api/generate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
     $("#text").value=j.text; updateCount(); toast("digenerate ✓","ok");
   } catch(e){ toast("gagal: "+e.message,"err"); }
@@ -489,7 +710,7 @@ $("#btn-save").addEventListener("click", async ()=>{
   finally{ btn.disabled=false; }
 });
 $("#btn-clear").addEventListener("click", clearForm);
-function clearForm(){ ["#text","#sched","#gen-topic","#gen-brief","#ss-link","#ss-text"].forEach(s=>$(s).value=""); uploads=[]; ssUpload=null; renderThumbs(); renderSsThumb(); updateCount(); }
+function clearForm(){ ["#text","#sched","#gen-topic","#gen-brief","#ss-link","#ss-text"].forEach(s=>$(s).value=""); refsSet("gen-refs", []); uploads=[]; ssUpload=null; renderThumbs(); renderSsThumb(); updateCount(); }
 $("#filters").addEventListener("click", e=>{ if(e.target.tagName!=="BUTTON")return; curFilter=e.target.dataset.f; $$("#filters button").forEach(b=>b.classList.toggle("on",b===e.target)); loadPosts(); });
 async function loadPosts(){
   try{
@@ -653,20 +874,28 @@ async function loadPersonas(){
 window.editPersona=async id=>{
   const p=await api("/api/persona?id="+id);
   $("#p-id").value=p.id; $("#p-handle").value=p.handle; $("#p-name").value=p.name; $("#p-desc").value=p.description||"";
-  $("#p-lang").value=p.lang||"id"; $("#p-sys").value=p.system_prompt||""; $("#p-urls").value=(p.reference_urls||[]).join("\n");
+  $("#p-lang").value=p.lang||"id"; $("#p-sys").value=p.system_prompt||"";
+  // reference_urls kompatibilitas: field lama berisi URL, field baru berisi teks utas mentah
+  refsSet("p-urls", p.reference_urls||[]);
   $("#p-default").checked=!!p.is_default; $("#pf-title").textContent="Edit Persona"; $("#learn-status").textContent="";
 };
 window.delPersona=async id=>{ if(!confirm("Hapus persona?"))return; await api("/api/persona/delete",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id})}); toast("dihapus","ok"); loadPersonas(); };
-$("#btn-pnew").addEventListener("click",()=>{ ["#p-id","#p-name","#p-desc","#p-sys","#p-urls"].forEach(s=>$(s).value=""); $("#p-default").checked=false; $("#pf-title").textContent="Buat Persona"; $("#learn-status").textContent=""; });
-function personaPayload(){ const urls=$("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean); const p={handle:$("#p-handle").value,name:$("#p-name").value.trim(),description:$("#p-desc").value.trim(),system_prompt:$("#p-sys").value.trim(),lang:$("#p-lang").value,reference_urls:urls,is_default:$("#p-default").checked}; if($("#p-id").value)p.id=parseInt($("#p-id").value); return p; }
+$("#btn-pnew").addEventListener("click",()=>{ ["#p-id","#p-name","#p-desc","#p-sys"].forEach(s=>$(s).value=""); refsSet("p-urls", []); $("#p-default").checked=false; $("#pf-title").textContent="Buat Persona"; $("#learn-status").textContent=""; });
+function personaPayload(){
+  const refs = refsGet("p-urls");
+  const p = {handle:$("#p-handle").value, name:$("#p-name").value.trim(), description:$("#p-desc").value.trim(), system_prompt:$("#p-sys").value.trim(), lang:$("#p-lang").value, reference_urls:refs, is_default:$("#p-default").checked};
+  if($("#p-id").value) p.id=parseInt($("#p-id").value);
+  return p;
+}
 $("#btn-psave").addEventListener("click", async ()=>{ const p=personaPayload(); if(!p.name)return toast("isi nama","err"); try{ const j=await api("/api/persona/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); $("#p-id").value=j.id; $("#pf-title").textContent="Edit Persona"; toast("tersimpan ✓","ok"); loadPersonas(); loadGenPersonas(); }catch(e){ toast("gagal: "+e.message,"err"); } });
 $("#btn-plearn").addEventListener("click", async ()=>{
   let pid=$("#p-id").value;
   if(!pid){ const p=personaPayload(); if(!p.name)return toast("isi nama & simpan dulu","err"); try{ const j=await api("/api/persona/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); pid=j.id; $("#p-id").value=pid; }catch(e){ return toast("gagal: "+e.message,"err"); } }
-  const urls=$("#p-urls").value.split("\n").map(s=>s.trim()).filter(Boolean);
+  const refs = refsGet("p-urls");
+  if(!refs.length) return toast("isi minimal 1 utas referensi","err");
   const btn=$("#btn-plearn"),old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> belajar...';
-  $("#learn-status").textContent="fetch link + analisis (20-40 detik)...";
-  try{ const j=await api("/api/persona/learn",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:parseInt(pid),reference_urls:urls})}); $("#learn-status").innerHTML=`✅ belajar dari ${j.samples_found} post`; toast("gaya dipelajari ✓","ok"); loadPersonas(); }
+  $("#learn-status").textContent="analisis gaya (5-10 detik)...";
+  try{ const j=await api("/api/persona/learn",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:parseInt(pid), reference_texts:refs})}); $("#learn-status").innerHTML=`✅ belajar dari ${j.samples_found} utas`; toast("gaya dipelajari ✓","ok"); loadPersonas(); }
   catch(e){ $("#learn-status").textContent="⚠ "+e.message; toast("gagal: "+e.message,"err"); }
   finally{ btn.disabled=false; btn.innerHTML=old; }
 });
@@ -689,13 +918,65 @@ async function loadAutopost(){
   try{
     const c=await api("/api/autopost?handle="+h);
     setApState(c.enabled); $("#ap-lang").value=c.lang||"id"; $("#ap-niches").value=(c.niches||[]).join("\n");
-    $("#ap-styleurls").value=(c.style_urls||[]).join("\n"); $("#ap-guide").value=c.style_guide||"";
+    refsSet("ap-styleurls", c.style_urls||[]); $("#ap-guide").value=c.style_guide||"";
     $("#ap-ppd").value=c.posts_per_day||3; $("#ap-pmin").value=c.num_parts_min||1; $("#ap-pmax").value=c.num_parts_max||3;
     $("#ap-hours").value=(c.best_hours||[8,12,18,21]).join(", "); if(c.persona_id)$("#ap-persona").value=c.persona_id;
   }catch(e){ toast("gagal load: "+e.message,"err"); }
+  loadAutoreply(h);
 }
+
+// ── AUTO-REPLY ──
+async function loadAutoreply(h){
+  // isi persona dropdown (universal)
+  try { const ps=await api("/api/personas");
+    $("#ar-persona").innerHTML='<option value="">— netral —</option>'+ps.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join("");
+  } catch(e){}
+  try {
+    const c=await api("/api/autoreply?handle="+h);
+    setArState(c.enabled);
+    $("#ar-keywords").value=(c.keywords||[]).join("\n");
+    $("#ar-minlikes").value=c.min_likes||100; $("#ar-maxage").value=c.max_age_hours||72;
+    $("#ar-perday").value=c.per_day||4; $("#ar-gap").value=c.gap_hours||2.5;
+    $("#ar-lang").value=c.lang||"id"; if(c.persona_id)$("#ar-persona").value=c.persona_id;
+  } catch(e){}
+}
+function setArState(on){ $("#ar-state-label").textContent=on?"ON ✅":"OFF"; $("#ar-state-label").style.color=on?"var(--ok)":"var(--muted)"; }
+function arPayload(){ return {handle:curAccount(),
+  keywords:$("#ar-keywords").value.split("\n").map(s=>s.trim()).filter(Boolean),
+  min_likes:parseInt($("#ar-minlikes").value)||100,
+  max_age_hours:parseInt($("#ar-maxage").value)||72,
+  per_day:parseInt($("#ar-perday").value)||4,
+  gap_hours:parseFloat($("#ar-gap").value)||2.5,
+  lang:$("#ar-lang").value,
+  persona_id:$("#ar-persona").value?parseInt($("#ar-persona").value):null}; }
+$("#ar-save") && $("#ar-save").addEventListener("click", async ()=>{
+  const p=arPayload(); if(!p.keywords.length)return toast("isi keyword dulu","err");
+  try{ await api("/api/autoreply/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); toast("config auto-reply tersimpan ✓","ok"); }
+  catch(e){ toast("gagal: "+e.message,"err"); }
+});
+$("#ar-toggle") && $("#ar-toggle").addEventListener("click", async ()=>{
+  const p=arPayload(); if(!p.keywords.length)return toast("isi keyword dulu","err");
+  try{ await api("/api/autoreply/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
+    const j=await api("/api/autoreply/toggle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({handle:curAccount()})});
+    setArState(j.enabled); toast(j.enabled?"Auto-reply ON ✅":"Auto-reply OFF","ok"); }
+  catch(e){ toast("gagal: "+e.message,"err"); }
+});
+$("#ar-test") && $("#ar-test").addEventListener("click", async ()=>{
+  const p=arPayload(); if(!p.keywords.length)return toast("isi keyword dulu","err");
+  const btn=$("#ar-test"),old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span> nyari (bisa 30-60 detik)...';
+  $("#ar-test-box").innerHTML='<div class="empty"><span class="spin"></span> scraper lagi cari post...</div>';
+  try{
+    const j=await api("/api/autoreply/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
+    const posts=j.posts||[];
+    if(!posts.length){ $("#ar-test-box").innerHTML=`<div class="empty">gak ketemu post buat keyword "${esc(j.keyword)}" (coba turunin min like / longgarin umur)</div>`; return; }
+    $("#ar-test-box").innerHTML=`<div class="hint" style="margin-bottom:8px">keyword: "${esc(j.keyword)}" · ${posts.length} post ketemu</div>`+
+      posts.map(p=>`<div class="post" style="margin-bottom:8px"><div class="top"><span class="handle">@${esc(p.username)}</span><span class="tag">${fmtNum(p.likes)} likes</span></div><div class="txt">${esc(p.text.slice(0,180))}</div><div class="meta"><a href="${p.url}" target="_blank">buka post</a></div></div>`).join("");
+    toast("test selesai ✓","ok");
+  }catch(e){ $("#ar-test-box").innerHTML=`<div class="empty">error: ${esc(e.message)}</div>`; toast("gagal: "+e.message,"err"); }
+  finally{ btn.disabled=false; btn.innerHTML=old; }
+});
 function setApState(on){ $("#ap-state-label").textContent=on?"ON ✅":"OFF"; $("#ap-state-label").style.color=on?"var(--ok)":"var(--muted)"; }
-function apPayload(){ return {handle:curAccount(),lang:$("#ap-lang").value,niches:$("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),style_urls:$("#ap-styleurls").value.split("\n").map(s=>s.trim()).filter(Boolean),style_guide:$("#ap-guide").value.trim(),posts_per_day:parseInt($("#ap-ppd").value)||3,num_parts_min:parseInt($("#ap-pmin").value)||1,num_parts_max:parseInt($("#ap-pmax").value)||3,best_hours:$("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),persona_id:$("#ap-persona").value?parseInt($("#ap-persona").value):null}; }
+function apPayload(){ return {handle:curAccount(),lang:$("#ap-lang").value,niches:$("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),style_urls:refsGet("ap-styleurls"),style_guide:$("#ap-guide").value.trim(),posts_per_day:parseInt($("#ap-ppd").value)||3,num_parts_min:parseInt($("#ap-pmin").value)||1,num_parts_max:parseInt($("#ap-pmax").value)||3,best_hours:$("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),persona_id:$("#ap-persona").value?parseInt($("#ap-persona").value):null}; }
 $("#ap-save").addEventListener("click", async ()=>{ const p=apPayload(); if(!p.niches.length)return toast("isi niche","err"); try{ await api("/api/autopost/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); toast("config tersimpan ✓","ok"); }catch(e){ toast("gagal: "+e.message,"err"); } });
 $("#ap-toggle").addEventListener("click", async ()=>{ const p=apPayload(); if(!p.niches.length)return toast("isi niche dulu","err"); try{ await api("/api/autopost/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); const j=await api("/api/autopost/toggle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({handle:curAccount()})}); setApState(j.enabled); toast(j.enabled?"Auto-post ON ✅":"Auto-post OFF","ok"); }catch(e){ toast("gagal: "+e.message,"err"); } });
 $("#ap-preview").addEventListener("click", async ()=>{
@@ -794,5 +1075,16 @@ window.useHook = hook => {
   initTheme();
   try{ await loadAccounts(); await loadGenPersonas(); }catch(e){ toast("gagal load akun: "+e.message,"err"); }
   updateCount();
-  gotoPage("dashboard");
+  // init repeater referensi utas di 3 lokasi (compose, persona, autopost)
+  refsSet("gen-refs", []);
+  refsSet("p-urls", []);
+  refsSet("ap-styleurls", []);
+  // restore page terakhir dari localStorage (fallback ke dashboard)
+  const VALID = new Set(["dashboard","analytics","compose","instant","autopost","persona","akun","hooks"]);
+  let saved = "dashboard";
+  try {
+    const s = localStorage.getItem("cms-page");
+    if(s && VALID.has(s)) saved = s;
+  } catch(_){}
+  gotoPage(saved);
 })();

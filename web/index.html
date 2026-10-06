@@ -51,7 +51,7 @@
         <div class="stats" id="dash-stats"></div>
         <div class="grid-2-1">
           <div class="card">
-            <h2>Engagement per Post</h2>
+            <h2>Views per Hari <span id="dash-range-pills" class="range-pills" style="float:right"></span></h2>
             <div class="chart-wrap" id="dash-chart"><div class="empty">memuat...</div></div>
           </div>
           <div class="card">
@@ -84,13 +84,15 @@
           <span class="hint" id="ana-updated" style="margin:0"></span>
         </div>
         <div class="stats" id="ana-stats"></div>
-        <div class="card" style="margin-top:4px">
-          <h2>📈 Tren Views per Akun</h2>
-          <div class="chart-wrap" id="ana-bar"><div class="empty">belum ada data, klik Update Data</div></div>
-        </div>
-        <div class="card" style="margin-top:18px">
-          <h2>🏆 Ranking Akun</h2>
-          <div id="ana-rank"><div class="empty">klik Update Data</div></div>
+        <div class="ana-row" style="margin-top:4px">
+          <div class="card ana-chart-card">
+            <h2>📈 Tren Views per Akun <span id="ana-range-pills" class="range-pills" style="float:right"></span></h2>
+            <div class="chart-wrap" id="ana-bar"><div class="empty">belum ada data, klik Update Data</div></div>
+          </div>
+          <div class="card ana-rank-card">
+            <h2>🏆 Top 10 Akun</h2>
+            <div id="ana-rank"><div class="empty">klik Update Data</div></div>
+          </div>
         </div>
       </div>
 
@@ -110,6 +112,8 @@
               <input type="text" id="gen-topic" placeholder="mis: kenapa prompt bagus itu aset">
               <label>Arahan tambahan (opsional)</label>
               <textarea id="gen-brief" class="sm" placeholder="mis: tone lebih personal, ceritain pengalaman"></textarea>
+              <label>Referensi gaya (opsional)</label>
+              <div id="gen-refs"></div>
               <div class="row" style="margin-top:10px">
                 <label style="margin:0">Bahasa</label>
                 <select id="gen-lang" style="width:120px"><option value="id">Indonesia</option><option value="en">English</option></select>
@@ -213,8 +217,8 @@
             <select id="ap-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
             <label>Niche (1 per baris)</label>
             <textarea id="ap-niches" class="sm" placeholder="AI tools&#10;Side Hustle&#10;Self Improvement"></textarea>
-            <label>Link referensi gaya (1 per baris) (opsional)</label>
-            <textarea id="ap-styleurls" class="sm" placeholder="https://www.threads.net/@user/post/xxx"></textarea>
+            <label>Referensi gaya (opsional)</label>
+            <div id="ap-styleurls"></div>
             <label>Panduan gaya (bisa diedit)</label>
             <div class="row" style="gap:6px;margin-bottom:6px">
               <select id="ap-hookcat" style="flex:1"><option value="">— pilih kategori hook —</option></select>
@@ -240,6 +244,37 @@
             <div id="ap-preview-box"><div class="empty">klik Preview buat contoh hasil AI</div></div>
           </div>
         </div>
+
+        <!-- ── AUTO-REPLY ── -->
+        <div class="card" style="margin-top:22px">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <div>
+              <h2 style="margin:0">💬 Auto-Reply ke Post Viral</h2>
+              <div class="hint" style="margin-top:3px">Cari post rame by keyword, reply natural biar akun keliatan aktif. Pakai akun scraper buat ambil data.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <span id="ar-state-label" style="font-weight:600">OFF</span>
+              <button id="ar-toggle" class="ghost">Toggle ON/OFF</button>
+            </div>
+          </div>
+          <label>Keyword yang dicari (1 per baris) — WAJIB SAVE tiap ganti</label>
+          <textarea id="ar-keywords" class="sm" placeholder="AI tools&#10;prompt desain&#10;side hustle"></textarea>
+          <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:12px">
+            <div><label style="margin:0">Min. like</label><input type="number" id="ar-minlikes" value="10" min="1" style="width:90px"></div>
+            <div><label style="margin:0">Umur maks (jam)</label><input type="number" id="ar-maxage" value="72" min="1" style="width:100px"></div>
+            <div><label style="margin:0">Reply/hari</label><input type="number" id="ar-perday" value="4" min="1" max="20" style="width:90px"></div>
+            <div><label style="margin:0">Jeda (jam)</label><input type="number" id="ar-gap" value="2.5" step="0.5" min="0.5" style="width:90px"></div>
+          </div>
+          <label>Persona gaya reply (opsional)</label>
+          <select id="ar-persona"><option value="">— netral —</option></select>
+          <label>Bahasa</label>
+          <select id="ar-lang" style="width:140px"><option value="id">Indonesia</option><option value="en">English</option></select>
+          <div class="row" style="margin-top:14px">
+            <button id="ar-save">Simpan Config</button>
+            <button id="ar-test" class="ghost">🔍 Test Cari (gak reply)</button>
+          </div>
+          <div id="ar-test-box" style="margin-top:12px"></div>
+        </div>
       </div>
 
       <!-- ══ PERSONA ══ -->
@@ -257,8 +292,8 @@
             <label>Bahasa</label><select id="p-lang"><option value="id">Indonesia</option><option value="en">English</option></select>
             <label>Instruksi gaya (system prompt)</label>
             <textarea id="p-sys" class="sm" placeholder="Nulis soal X, tone visioner tapi santai"></textarea>
-            <label>Link Threads buat belajar gaya (1 per baris)</label>
-            <textarea id="p-urls" class="sm" placeholder="https://www.threads.net/@user/post/xxx"></textarea>
+            <label>Referensi gaya (contoh utas buat belajar)</label>
+            <div id="p-urls"></div>
             <label class="row" style="margin-top:12px"><input type="checkbox" id="p-default" style="width:auto; margin-right:7px"> Jadikan default</label>
             <div class="row" style="margin-top:14px">
               <button id="btn-psave">Simpan</button>

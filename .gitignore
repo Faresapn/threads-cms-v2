@@ -12,3 +12,5 @@ app.json
 tls-key.pem
 tls-cert.pem
 data/analytics/
+scraper_profile/
+_test_*.py

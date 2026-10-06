@@ -30,6 +30,9 @@ def init_db():
     v3 = BASE / "db" / "schema_v3.sql"
     if v3.exists():
         con.executescript(v3.read_text())
+    v4 = BASE / "db" / "schema_v4.sql"
+    if v4.exists():
+        con.executescript(v4.read_text())
     # migrasi kolom soft-sell (idempotent)
     cols = {r["name"] for r in con.execute("PRAGMA table_info(posts)").fetchall()}
     if "softsell_link" not in cols:
@@ -187,6 +190,32 @@ def count_pending_auto(handle, now=None):
     return len(rows)
 
 
+def recent_auto_texts(handle, limit=12):
+    """Ambil teks post AUTO terakhir buat handle ini (scheduled + posted),
+    terbaru dulu. Dipakai anti-dedup: dikasih ke LLM sebagai daftar topik yg
+    SUDAH/BAKAL dibahas biar gak ngebahas hal sama. Cuma part-1 (hook) tiap
+    post yg diambil biar hemat token + part-1 = inti topiknya."""
+    con = connect()
+    rows = con.execute(
+        "SELECT text FROM posts WHERE handle=? AND source='auto' "
+        "AND status IN ('scheduled','posted') "
+        "ORDER BY created_at DESC LIMIT ?", (handle, limit)
+    ).fetchall()
+    con.close()
+    out = []
+    for r in rows:
+        t = (r["text"] or "").strip()
+        if not t:
+            continue
+        # ambil part-1 aja (sebelum pemisah '---') = hook/topik inti
+        first = t.split("\n---\n")[0].strip()
+        # ringkes ke 1-2 baris biar daftar hindari gak kepanjangan
+        first = " ".join(first.split())[:160]
+        if first:
+            out.append(first)
+    return out
+
+
 # ── media ───────────────────────────────────────────────────────────────
 def add_media(post_id, part_index, r2_key, public_url, filename=None, size=None):
     con = connect()
@@ -306,6 +335,82 @@ def save_persona(handle="*", name=None, description=None, system_prompt=None, la
         con.execute("UPDATE personas SET is_default=0 WHERE id!=?", (out_id,))
     con.commit(); con.close()
     return out_id
+
+
+# ── auto-reply ────────────────────────────────────────────────────────────
+def get_autoreply(handle):
+    con = connect()
+    r = con.execute("SELECT * FROM autoreply_config WHERE handle=?", (handle,)).fetchone()
+    con.close()
+    if not r:
+        return {"handle": handle, "enabled": 0, "keywords": [], "min_likes": 10,
+                "max_age_hours": 72, "per_day": 4, "gap_hours": 2.5,
+                "persona_id": None, "lang": "id", "last_reply_at": None}
+    d = dict(r)
+    d["keywords"] = json.loads(d["keywords"]) if d.get("keywords") else []
+    return d
+
+
+def save_autoreply(handle, enabled=None, keywords=None, min_likes=None,
+                   max_age_hours=None, per_day=None, gap_hours=None,
+                   persona_id=None, lang=None):
+    cur = get_autoreply(handle)
+    v = lambda new, old: old if new is None else new
+    kw = json.dumps(keywords if keywords is not None else cur["keywords"], ensure_ascii=False)
+    con = connect()
+    con.execute(
+        """INSERT INTO autoreply_config(handle,enabled,keywords,min_likes,max_age_hours,
+           per_day,gap_hours,persona_id,lang,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(handle) DO UPDATE SET
+             enabled=excluded.enabled, keywords=excluded.keywords,
+             min_likes=excluded.min_likes, max_age_hours=excluded.max_age_hours,
+             per_day=excluded.per_day, gap_hours=excluded.gap_hours,
+             persona_id=excluded.persona_id, lang=excluded.lang,
+             updated_at=excluded.updated_at""",
+        (handle, v(enabled, cur["enabled"]), kw, v(min_likes, cur["min_likes"]),
+         v(max_age_hours, cur["max_age_hours"]), v(per_day, cur["per_day"]),
+         v(gap_hours, cur["gap_hours"]), v(persona_id, cur["persona_id"]),
+         v(lang, cur["lang"]), now_iso()))
+    con.commit(); con.close()
+
+
+def list_enabled_autoreply():
+    con = connect()
+    rows = con.execute("SELECT handle FROM autoreply_config WHERE enabled=1").fetchall()
+    con.close()
+    return [r["handle"] for r in rows]
+
+
+def autoreply_seen(handle, post_id):
+    """True kalau post ini udah pernah di-reply akun ini."""
+    con = connect()
+    r = con.execute("SELECT 1 FROM autoreply_seen WHERE handle=? AND post_id=?",
+                    (handle, post_id)).fetchone()
+    con.close()
+    return r is not None
+
+
+def mark_autoreply(handle, post_id, reply_text):
+    con = connect()
+    con.execute(
+        "INSERT OR IGNORE INTO autoreply_seen(handle,post_id,replied_at,reply_text) VALUES(?,?,?,?)",
+        (handle, post_id, now_iso(), reply_text[:300]))
+    con.execute("UPDATE autoreply_config SET last_reply_at=? WHERE handle=?",
+                (now_iso(), handle))
+    con.commit(); con.close()
+
+
+def autoreply_count_today(handle):
+    """Berapa reply udah dikirim akun ini hari ini (buat kuota per_day)."""
+    from datetime import date
+    today = date.today().isoformat()
+    con = connect()
+    rows = con.execute(
+        "SELECT replied_at FROM autoreply_seen WHERE handle=? AND replied_at>=?",
+        (handle, today)).fetchall()
+    con.close()
+    return len(rows)
 
 
 def update_persona_style(pid, learned_style):

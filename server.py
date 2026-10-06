@@ -111,6 +111,11 @@ def _plan_autopost(only_handle=None):
         hook_cats = list(_hooks.HOOK_CATEGORIES.items())
         random.shuffle(hook_cats)
 
+        # anti-dedup: daftar topik yg udah dibahas akun ini (scheduled+posted).
+        # tiap post baru yg digenerate di batch ini juga ditambahin ke daftar
+        # biar dalam 1 tick pun gak ngebahas hal sama.
+        avoid = db.recent_auto_texts(handle, limit=12)
+
         made = 0
         for i in range(need):
             niche = random.choice(niches)
@@ -120,10 +125,16 @@ def _plan_autopost(only_handle=None):
             try:
                 text = ai.generate_random(
                     niche, guide, lang=lang, num_parts=nparts, persona=persona,
-                    hook_examples=hk.get("examples"), hook_name=hk.get("name"))
+                    hook_examples=hk.get("examples"), hook_name=hk.get("name"),
+                    avoid_topics=avoid)
             except Exception as e:
                 print(f"[autopost] @{handle} gagal generate ({niche}): {e}", flush=True)
                 continue
+            # topik baru ini masuk daftar hindari buat post berikut di batch yg sama
+            _first = (text or "").split("\n---\n")[0].strip()
+            _first = " ".join(_first.split())[:160]
+            if _first:
+                avoid.insert(0, _first)
             # jadwal anti-pola: tiap akun punya jitter sendiri (deterministik dari handle)
             # biar 50 akun gak numpuk di jam sama walau best_hours mirip.
             import hashlib
@@ -147,6 +158,69 @@ def _plan_autopost(only_handle=None):
             made += 1
             print(f"[autopost] @{handle} +1 '{niche}' hook={hk.get('name')} "
                   f"lang={lang} @ {slot.strftime('%d/%m %H:%M')}", flush=True)
+
+
+def _run_autoreply():
+    """Engine auto-reply: tiap akun enabled, kalau lewat jeda & belum penuh kuota,
+    scrape post rame by keyword (akun scraper) -> pilih 1 yg belum di-reply ->
+    AI bikin reply nyambung -> kirim via API resmi akun itu. 1 reply per run per akun."""
+    import random
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from lib import scraper
+    except Exception as e:
+        print(f"[autoreply] scraper import gagal: {e}", flush=True)
+        return
+    for handle in db.list_enabled_autoreply():
+        try:
+            cfg = db.get_autoreply(handle)
+            kws = cfg.get("keywords") or []
+            if not kws:
+                continue
+            # kuota harian
+            if db.autoreply_count_today(handle) >= int(cfg.get("per_day", 4)):
+                continue
+            # jeda antar reply
+            last = cfg.get("last_reply_at")
+            if last:
+                try:
+                    gap = float(cfg.get("gap_hours", 2.5))
+                    last_dt = _dt.fromisoformat(last)
+                    if (_dt.now(last_dt.tzinfo) - last_dt).total_seconds() < gap * 3600:
+                        continue  # belum lewat jeda
+                except Exception:
+                    pass
+            # scrape 1 keyword acak
+            kw = random.choice(kws)
+            posts = scraper.search_posts(
+                kw, min_likes=int(cfg.get("min_likes", 10)),
+                max_age_hours=int(cfg.get("max_age_hours", 72)),
+                limit=15, search_type="recent", headless=True)
+            # pilih post pertama yg belum pernah di-reply akun ini + bukan post sendiri
+            target = None
+            for p in posts:
+                if p["username"].lower() == handle.lower():
+                    continue  # jgn reply post sendiri
+                if db.autoreply_seen(handle, p["id"]):
+                    continue
+                target = p
+                break
+            if not target:
+                print(f"[autoreply] @{handle} '{kw}': gak ada post baru layak reply", flush=True)
+                continue
+            # generate reply nyambung
+            persona = db.get_persona(cfg["persona_id"]) if cfg.get("persona_id") else None
+            reply_text = ai.generate_reply(target["text"], persona=persona,
+                                           lang=cfg.get("lang", "id"))
+            if not reply_text:
+                continue
+            # kirim reply via API resmi akun target
+            res = threads_api.reply_to(handle, target["id"], reply_text)
+            db.mark_autoreply(handle, target["id"], reply_text)
+            print(f"[autoreply] @{handle} -> @{target['username']} ({target['likes']} likes): "
+                  f"{reply_text[:60]}", flush=True)
+        except Exception as e:
+            print(f"[autoreply] @{handle} err: {str(e)[:120]}", flush=True)
 
 
 def scheduler_loop():
@@ -181,6 +255,10 @@ def scheduler_loop():
                 _plan_autopost()
             except Exception as e:
                 print(f"[autopost] planner err: {e}", flush=True)
+        # auto-reply tiap ~15 menit (30 tick). Jalan di thread terpisah krn scrape
+        # Playwright lambat + bisa error, jgn blok loop posting.
+        if _tick % 30 == 5:
+            threading.Thread(target=_run_autoreply, daemon=True).start()
         # auto-snapshot analytics tiap hari jam 7 pagi (sekali per hari)
         try:
             global _last_ana_day
@@ -257,6 +335,8 @@ class H(BaseHTTPRequestHandler):
                 return self._json(threads_api.account_analytics(
                     q.get("handle", [""])[0],
                     int(q.get("limit", ["25"])[0])))
+            if path == "/api/autoreply":
+                return self._json(db.get_autoreply(q.get("handle", [""])[0]))
             if path == "/api/hooks":
                 return self._json(hooks.list_hooks())
             if path == "/api/personas":
@@ -344,22 +424,63 @@ class H(BaseHTTPRequestHandler):
                 db.delete_persona(int(body["id"]))
                 return self._json({"ok": True})
             if path == "/api/persona/learn":
-                # fetch link → analisis gaya → simpan ke persona
+                # Analisis gaya dari referensi utas → simpan ke persona.
+                # Mode baru (reference_texts): user paste teks mentah → skip scrape.
+                # Mode lama (reference_urls): fallback scrape via Playwright/og.
                 pid = int(body["id"])
                 persona = db.get_persona(pid)
                 if not persona:
                     return self._json({"error": "persona not found"}, 404)
-                urls = body.get("reference_urls") or persona.get("reference_urls", [])
-                texts = ai.fetch_thread_texts(urls, handle=persona["handle"])
+                texts = body.get("reference_texts") or []
                 if not texts:
-                    return self._json({"error": "gak ada teks kebaca dari link/akun"}, 400)
+                    urls = body.get("reference_urls") or persona.get("reference_urls", [])
+                    # kalau "urls" ternyata teks utas (udah dipaste user), pake langsung
+                    looks_like_text = urls and any(len(u) > 100 or "---" in u for u in urls)
+                    if looks_like_text:
+                        texts = [u for u in urls if u.strip()]
+                    else:
+                        texts = ai.fetch_thread_texts(urls, handle=persona["handle"])
+                if not texts:
+                    return self._json({"error": "gak ada teks referensi (isi minimal 1 utas)"}, 400)
                 style = ai.learn_style(texts, lang=persona.get("lang", "id"))
                 db.update_persona_style(pid, style)
                 return self._json({"ok": True, "learned_style": style,
                                    "samples_found": len(texts)})
+            if path == "/api/autoreply/save":
+                db.save_autoreply(
+                    handle=body["handle"],
+                    enabled=body.get("enabled"),
+                    keywords=body.get("keywords"),
+                    min_likes=body.get("min_likes"),
+                    max_age_hours=body.get("max_age_hours"),
+                    per_day=body.get("per_day"),
+                    gap_hours=body.get("gap_hours"),
+                    persona_id=body.get("persona_id"),
+                    lang=body.get("lang"))
+                return self._json({"ok": True, "config": db.get_autoreply(body["handle"])})
+            if path == "/api/autoreply/toggle":
+                cfg = db.get_autoreply(body["handle"])
+                new_state = 0 if cfg["enabled"] else 1
+                db.save_autoreply(body["handle"], enabled=new_state)
+                return self._json({"ok": True, "enabled": new_state})
+            if path == "/api/autoreply/test":
+                # test cari post (GAK reply), buat user cek hasil scrape
+                from lib import scraper
+                kws = body.get("keywords") or []
+                if not kws:
+                    return self._json({"error": "isi keyword dulu"}, 400)
+                import random as _r
+                kw = _r.choice(kws)
+                try:
+                    posts = scraper.search_posts(
+                        kw, min_likes=int(body.get("min_likes", 10)),
+                        max_age_hours=int(body.get("max_age_hours", 72)),
+                        limit=10, search_type="recent", headless=True)
+                    return self._json({"ok": True, "keyword": kw, "posts": posts})
+                except Exception as e:
+                    return self._json({"error": f"scrape gagal: {str(e)[:150]}"}, 500)
             if path == "/api/instant":
                 # Instant Content: pilih persona + judul + desk -> LLM auto-generate
-                # (nentuin sendiri jumlah part). Opsi: langsung bikin post draft/jadwal.
                 persona = db.get_persona(int(body["persona_id"])) if body.get("persona_id") else {}
                 if not persona:
                     return self._json({"error": "persona wajib dipilih"}, 400)
@@ -389,6 +510,27 @@ class H(BaseHTTPRequestHandler):
                         "sample_posts": body.get("sample_posts", []),
                         "lang": body.get("lang", "id"),
                     }
+                # reference_urls (legacy) atau sample_posts (teks mentah) — nambah ke few-shot
+                extra_texts = []
+                sample_posts_raw = body.get("sample_posts") or []
+                if sample_posts_raw:
+                    # user paste teks mentah → pake langsung
+                    extra_texts = [s for s in sample_posts_raw if s and s.strip()]
+                else:
+                    ref_urls = body.get("reference_urls") or []
+                    if ref_urls:
+                        # cek: kalau item panjang / ada "---", anggap teks mentah
+                        looks_like_text = any(len(u) > 100 or "---" in u for u in ref_urls)
+                        if looks_like_text:
+                            extra_texts = [u for u in ref_urls if u.strip()]
+                        else:
+                            try:
+                                extra_texts = ai.fetch_thread_texts(ref_urls, handle=None)
+                            except Exception as e:
+                                print(f"[generate] fetch_refs err: {e}", flush=True)
+                if extra_texts:
+                    existing = list(persona.get("sample_posts") or [])
+                    persona["sample_posts"] = existing + extra_texts
                 text = ai.generate(body["topic"], persona,
                                    num_parts=int(body.get("num_parts", 1)),
                                    lang=body.get("lang"),
