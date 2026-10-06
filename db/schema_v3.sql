@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS autopost_config (
     enabled         INTEGER DEFAULT 0,          -- on/off toggle
     lang            TEXT DEFAULT 'id',           -- id | en (bahasa post)
     niches          TEXT,                         -- JSON list niche
-    posts_per_day   INTEGER DEFAULT 3,           -- 3-4x sehari
+    posts_per_day   INTEGER DEFAULT 2,           -- maks 2x sehari (anti-spam)
     best_hours      TEXT,                         -- JSON list jam terbaik (0-23)
     persona_id      INTEGER,                      -- persona opsional buat gaya
     num_parts_min   INTEGER DEFAULT 1,

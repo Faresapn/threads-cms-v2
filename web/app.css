@@ -142,6 +142,13 @@ a { color: var(--accent); text-decoration: none; }
   padding: 22px; box-shadow: var(--card-shadow); }
 .card h2 { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em;
   color: var(--muted); margin-bottom: 17px; font-weight: 590; }
+
+/* ── CARD HEADER (judul + subtitle, ala referensi rapi) ── */
+.card-head { display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 20px; }
+.card-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--fg); }
+.card-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; letter-spacing: -0.005em; }
+.card-head .range-pills { flex: 0 0 auto; margin-top: 2px; }
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 .grid-2-1 { display: grid; grid-template-columns: 1.7fr 1fr; gap: 20px; }
 @media (max-width: 1000px) { .grid, .grid-2-1 { grid-template-columns: 1fr; } }
@@ -248,7 +255,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
   width:11px; height:11px; background:rgba(12,13,14,0.98);
   border-right:1px solid var(--border); border-bottom:1px solid var(--border);
 }
-svg.chart { display: block; width: 100%; height: auto; overflow: hidden; }
+svg.chart { display: block; width: 100%; height: auto; max-height: 260px; overflow: hidden; }
 svg.chart .dot-g { cursor: pointer; }
 /* ── REPEATER REFERENSI UTAS ── */
 .refs-list { display: flex; flex-direction: column; gap: 10px; }
@@ -263,6 +270,14 @@ svg.chart .dot-g { cursor: pointer; }
 .ana-row { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
 .ana-chart-card { min-width: 0; }
 .ana-rank-card { min-width: 0; }
+/* layar lebar: rank-card dilebarin + chart dikasih napas, biar chart ga jadi
+   kotak raksasa. chart-wrap dibatasi tinggi lewat svg.chart max-height. */
+@media (min-width: 1600px) {
+  .ana-row { grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; }
+}
+@media (min-width: 2200px) {
+  .ana-row { grid-template-columns: minmax(0, 1.5fr) 440px; gap: 20px; max-width: 1700px; }
+}
 .rank-list { display: flex; flex-direction: column; gap: 2px; }
 .rank-item { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--border-subtle); font-size: 13px; }
 .rank-item:last-child { border-bottom: none; }
@@ -273,6 +288,67 @@ svg.chart .dot-g { cursor: pointer; }
 .rank-item.err { opacity: .55; }
 .rank-item.err .rank-err { color: var(--err); }
 @media (max-width: 980px) { .ana-row { grid-template-columns: 1fr; } }
+
+/* ── per-account card grid (banding antar akun) ── */
+.ana-section-h { margin: 32px 0 16px; }
+.ana-section-h .hint { font-weight: 400; margin-left: 4px; }
+.acc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 14px;
+}
+/* auto-fit: kolom melar isi lebar penuh, SEMUA card tetep sama lebar tiap baris.
+   baris terakhir yg ga penuh = card tetep selebar yg lain (rata, ga melar aneh).
+   di layar lebar minmax dinaikin biar card ga kekecilan. */
+@media (min-width: 1600px) {
+  .acc-grid { grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+}
+@media (min-width: 2200px) {
+  .acc-grid { grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 18px; }
+}
+.acc-card {
+  min-width: 0;
+}
+.acc-card {
+  background: var(--surface-solid); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: 16px; min-width: 0;
+  position: relative; overflow: hidden;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.acc-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--acc-c, var(--accent)); opacity: .85;
+}
+.acc-card:hover { transform: translateY(-2px); border-color: var(--acc-c, var(--border));
+  box-shadow: 0 8px 28px rgba(0,0,0,0.45); }
+.ac-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.ac-av {
+  width: 38px; height: 38px; border-radius: 10px; flex: 0 0 38px;
+  display: grid; place-items: center; font-family: var(--mono);
+  font-size: 13px; font-weight: 700; color: #06110d; letter-spacing: -0.02em;
+}
+.ac-id { min-width: 0; }
+.ac-handle { font-size: 13px; font-weight: 600; color: var(--fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-rank { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 1px; }
+.ac-hero { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; position: relative; }
+.ac-views { font-size: 26px; font-weight: 700; font-family: var(--mono);
+  letter-spacing: -0.03em; color: var(--fg); line-height: 1.1; }
+.ac-views-lbl { font-size: 11px; color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.ac-hero .spark { width: 100%; height: 38px; margin-top: 8px; display: block; }
+.ac-metrics {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px;
+  background: var(--border-subtle); border-radius: var(--r); overflow: hidden;
+}
+.ac-m {
+  background: var(--surface); padding: 9px 8px; text-align: center;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ac-mv { font-size: 13px; font-weight: 600; font-family: var(--mono); color: var(--fg); }
+.ac-ml { font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .03em; }
+/* summary total card panjang: beda dikit biar menonjol */
+.ana-total { margin-bottom: 24px; }
+
 /* ── legend interaktif (toggle garis) ── */
 .ana-legend { display:flex; flex-wrap:wrap; gap:7px; margin-top:14px; }
 .ana-legend .leg-item {

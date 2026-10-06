@@ -399,6 +399,75 @@ const ANA_GRAD = [
   ["#fda4af","#f43f5e"], // rose
 ];
 
+// ── MINI SPARKLINE: views harian 1 akun, buat kartu per-akun ──
+// trend = array titik {date, per_handle:{handle:views}}; handle = akun yg mau digambar.
+// Return SVG string kecil (area + garis). Kosong -> placeholder flat.
+function sparkline(trend, handle, color){
+  const w=150, h=38, pad=3;
+  const vals = (trend||[]).map(t => (t.per_handle||{})[handle] || 0);
+  if(vals.length < 2){
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="var(--border)" stroke-width="1.5" stroke-dasharray="2 3"/></svg>`;
+  }
+  const max = Math.max(1, ...vals), min = Math.min(...vals);
+  const span = max-min || 1;
+  const iw=w-pad*2, ih=h-pad*2;
+  const xAt = i => pad + (i/(vals.length-1))*iw;
+  const yAt = v => pad + ih - ((v-min)/span)*ih;
+  const pts = vals.map((v,i)=>[xAt(i), yAt(v)]);
+  const line = pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area = line + ` L${(w-pad).toFixed(1)} ${(h-pad).toFixed(1)} L${pad.toFixed(1)} ${(h-pad).toFixed(1)} Z`;
+  // naik apa turun (warna area ikut arah: default pakai color akun)
+  const up = vals[vals.length-1] >= vals[0];
+  const c = color || (up ? "var(--ok)" : "var(--err)");
+  const gid = "sg_"+handle.replace(/[^a-z0-9]/gi,"")+Math.random().toString(36).slice(2,6);
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${c}" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs>
+    <path d="${area}" fill="url(#${gid})"/>
+    <path d="${line}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  </svg>`;
+}
+
+// ── GRID KARTU PER-AKUN: tiap akun 1 card, buat banding-bandingin ──
+function renderAnaCards(sel, accs, trend){
+  const el = $(sel);
+  const live = (accs||[]).filter(a=>!a.error);
+  if(!live.length){ el.innerHTML='<div class="empty" style="padding:40px 20px">belum ada akun ber-data<br><span class="hint">klik Update Data</span></div>'; return; }
+  // urut views desc (sejalan sama rank)
+  const sorted = [...live].sort((a,b)=>(b.views||0)-(a.views||0));
+  const colorOf = {}; sorted.forEach((a,i)=>colorOf[a.handle]=ANA_GRAD[i%ANA_GRAD.length][0]);
+  const medal = r => r===1?"🥇":r===2?"🥈":r===3?"🥉":`#${r}`;
+  const cards = sorted.map((a,i)=>{
+    const c = colorOf[a.handle];
+    const er = (a.engagement_rate!=null) ? a.engagement_rate.toFixed(2)+"%" : "—";
+    return `<div class="acc-card" style="--acc-c:${c}">
+      <div class="ac-head">
+        <div class="ac-av" style="background:linear-gradient(135deg,${c},${ANA_GRAD[i%ANA_GRAD.length][1]})">${_initials(a.handle)}</div>
+        <div class="ac-id">
+          <div class="ac-handle">@${esc(a.handle)}</div>
+          <div class="ac-rank">${medal(a.rank||i+1)} · ${a.posts_analyzed||0} post</div>
+        </div>
+      </div>
+      <div class="ac-hero">
+        <div class="ac-views">${fmtNum(a.views)}</div>
+        <div class="ac-views-lbl">total views</div>
+        ${sparkline(trend, a.handle, c)}
+      </div>
+      <div class="ac-metrics">
+        <div class="ac-m"><span class="ac-mv">${er}</span><span class="ac-ml">eng rate</span></div>
+        <div class="ac-m"><span class="ac-mv">${fmtNum(a.avg_views)}</span><span class="ac-ml">avg views</span></div>
+        <div class="ac-m"><span class="ac-mv">${fmtNum(a.likes)}</span><span class="ac-ml">likes</span></div>
+        <div class="ac-m"><span class="ac-mv">${fmtNum(a.replies)}</span><span class="ac-ml">replies</span></div>
+        <div class="ac-m"><span class="ac-mv">${fmtNum(a.reposts)}</span><span class="ac-ml">reposts</span></div>
+        <div class="ac-m"><span class="ac-mv">${fmtNum(a.engagement_total)}</span><span class="ac-ml">eng total</span></div>
+      </div>
+    </div>`;
+  }).join("");
+  el.innerHTML = cards;
+}
+
 // state garis yg disembunyiin (per handle) + data terakhir buat re-render legend
 const _anaHidden = new Set();
 let _lastAna = null;
@@ -418,6 +487,7 @@ function renderAnalytics(j){
   const snap = j.snapshot;
   if(!j.has_data || !snap){
     $("#ana-updated").textContent = "belum ada data";
+    $("#ana-cards").innerHTML = '<div class="empty" style="padding:50px 20px;grid-column:1/-1">Belum ada snapshot<br><span class="hint">klik Update Data buat narik metrik semua akun</span></div>';
     $("#ana-bar").innerHTML = '<div class="empty" style="padding:50px 20px">Belum ada snapshot<br><span class="hint">klik Update Data buat narik metrik semua akun</span></div>';
     $("#ana-rank").innerHTML = '<div class="empty">—</div>';
     $("#ana-stats").innerHTML = statCards({views:0,likes:0,replies:0,reposts:0});
@@ -429,6 +499,7 @@ function renderAnalytics(j){
   const tot = accs.reduce((s,a)=>({views:s.views+(a.views||0),likes:s.likes+(a.likes||0),replies:s.replies+(a.replies||0),reposts:s.reposts+(a.reposts||0)}),{views:0,likes:0,replies:0,reposts:0});
   $("#ana-stats").innerHTML = statCards(tot);
   _lastAna = {trend: j.trend||[], accounts: snap.accounts||[]};
+  renderAnaCards("#ana-cards", snap.accounts||[], j.trend||[]);
   renderAnaRangePills();
   renderMultiTrend("#ana-bar", filterTrendByRange(j.trend||[], anaRange), snap.accounts||[]);
   renderRankTable("#ana-rank", snap.accounts||[]);
@@ -919,7 +990,7 @@ async function loadAutopost(){
     const c=await api("/api/autopost?handle="+h);
     setApState(c.enabled); $("#ap-lang").value=c.lang||"id"; $("#ap-niches").value=(c.niches||[]).join("\n");
     refsSet("ap-styleurls", c.style_urls||[]); $("#ap-guide").value=c.style_guide||"";
-    $("#ap-ppd").value=c.posts_per_day||3; $("#ap-pmin").value=c.num_parts_min||1; $("#ap-pmax").value=c.num_parts_max||3;
+    $("#ap-ppd").value=c.posts_per_day||2; $("#ap-pmin").value=c.num_parts_min||1; $("#ap-pmax").value=c.num_parts_max||3;
     $("#ap-hours").value=(c.best_hours||[8,12,18,21]).join(", "); if(c.persona_id)$("#ap-persona").value=c.persona_id;
   }catch(e){ toast("gagal load: "+e.message,"err"); }
   loadAutoreply(h);
@@ -976,7 +1047,7 @@ $("#ar-test") && $("#ar-test").addEventListener("click", async ()=>{
   finally{ btn.disabled=false; btn.innerHTML=old; }
 });
 function setApState(on){ $("#ap-state-label").textContent=on?"ON ✅":"OFF"; $("#ap-state-label").style.color=on?"var(--ok)":"var(--muted)"; }
-function apPayload(){ return {handle:curAccount(),lang:$("#ap-lang").value,niches:$("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),style_urls:refsGet("ap-styleurls"),style_guide:$("#ap-guide").value.trim(),posts_per_day:parseInt($("#ap-ppd").value)||3,num_parts_min:parseInt($("#ap-pmin").value)||1,num_parts_max:parseInt($("#ap-pmax").value)||3,best_hours:$("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),persona_id:$("#ap-persona").value?parseInt($("#ap-persona").value):null}; }
+function apPayload(){ return {handle:curAccount(),lang:$("#ap-lang").value,niches:$("#ap-niches").value.split("\n").map(s=>s.trim()).filter(Boolean),style_urls:refsGet("ap-styleurls"),style_guide:$("#ap-guide").value.trim(),posts_per_day:parseInt($("#ap-ppd").value)||2,num_parts_min:parseInt($("#ap-pmin").value)||1,num_parts_max:parseInt($("#ap-pmax").value)||3,best_hours:$("#ap-hours").value.split(",").map(s=>parseInt(s.trim())).filter(n=>!isNaN(n)&&n>=0&&n<=23),persona_id:$("#ap-persona").value?parseInt($("#ap-persona").value):null}; }
 $("#ap-save").addEventListener("click", async ()=>{ const p=apPayload(); if(!p.niches.length)return toast("isi niche","err"); try{ await api("/api/autopost/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); toast("config tersimpan ✓","ok"); }catch(e){ toast("gagal: "+e.message,"err"); } });
 $("#ap-toggle").addEventListener("click", async ()=>{ const p=apPayload(); if(!p.niches.length)return toast("isi niche dulu","err"); try{ await api("/api/autopost/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)}); const j=await api("/api/autopost/toggle",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({handle:curAccount()})}); setApState(j.enabled); toast(j.enabled?"Auto-post ON ✅":"Auto-post OFF","ok"); }catch(e){ toast("gagal: "+e.message,"err"); } });
 $("#ap-preview").addEventListener("click", async ()=>{

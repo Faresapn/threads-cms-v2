@@ -473,7 +473,7 @@ def get_autopost(handle):
     con.close()
     if not r:
         return {"handle": handle, "enabled": 0, "lang": "id", "niches": [],
-                "posts_per_day": 3, "best_hours": DEFAULT_HOURS, "persona_id": None,
+                "posts_per_day": 2, "best_hours": DEFAULT_HOURS, "persona_id": None,
                 "num_parts_min": 1, "num_parts_max": 3, "last_scheduled": None,
                 "style_urls": [], "style_guide": DEFAULT_STYLE_GUIDE}
     d = dict(r)

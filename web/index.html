@@ -83,17 +83,36 @@
           <button id="btn-ana-refresh">↻ Update Data</button>
           <span class="hint" id="ana-updated" style="margin:0"></span>
         </div>
-        <div class="stats" id="ana-stats"></div>
-        <div class="ana-row" style="margin-top:4px">
+        <!-- card panjang: total semua akun -->
+        <div class="stats ana-total" id="ana-stats"></div>
+        <!-- tren gabungan + ranking (DIATAS) -->
+        <div class="ana-row">
           <div class="card ana-chart-card">
-            <h2>📈 Tren Views per Akun <span id="ana-range-pills" class="range-pills" style="float:right"></span></h2>
+            <div class="card-head">
+              <div>
+                <div class="card-title">Tren Views per Akun</div>
+                <div class="card-sub">Views harian tiap akun sepanjang rentang terpilih</div>
+              </div>
+              <span id="ana-range-pills" class="range-pills"></span>
+            </div>
             <div class="chart-wrap" id="ana-bar"><div class="empty">belum ada data, klik Update Data</div></div>
           </div>
           <div class="card ana-rank-card">
-            <h2>🏆 Top 10 Akun</h2>
+            <div class="card-head">
+              <div>
+                <div class="card-title">Top 10 Akun</div>
+                <div class="card-sub">Peringkat berdasarkan total views</div>
+              </div>
+            </div>
             <div id="ana-rank"><div class="empty">klik Update Data</div></div>
           </div>
         </div>
+        <!-- grid kartu per-akun: banding-bandingin (DIBAWAH) -->
+        <div class="ana-section-h">
+          <div class="card-title">Per Akun</div>
+          <div class="card-sub">Bandingkan performa tiap akun, scroll buat lihat semua</div>
+        </div>
+        <div class="acc-grid" id="ana-cards"><div class="empty" style="grid-column:1/-1">belum ada data, klik Update Data</div></div>
       </div>
 
       <!-- ══ COMPOSE ══ -->

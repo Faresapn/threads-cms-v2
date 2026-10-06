@@ -96,7 +96,7 @@ def _plan_autopost(only_handle=None):
         if not niches:
             print(f"[autopost] @{handle} enabled tapi niche kosong, skip", flush=True)
             continue
-        target = max(1, int(cfg.get("posts_per_day", 3)))
+        target = max(1, int(cfg.get("posts_per_day", 2)))
         have = db.count_pending_auto(handle)
         need = target - have
         if need <= 0:
