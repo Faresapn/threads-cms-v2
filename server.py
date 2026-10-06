@@ -116,6 +116,36 @@ def _plan_autopost(only_handle=None):
         # biar dalam 1 tick pun gak ngebahas hal sama.
         avoid = db.recent_auto_texts(handle, limit=12)
 
+        # ── scheduling anti-spam: MINIMAL 2 JAM antar post auto ──
+        # bug lama: tiap post cari slot dari `now` yg sama -> semua numpuk di jam
+        # yg sama (beda cuma jitter menit). Fix: cursor waktu yg maju tiap post,
+        # tiap slot wajib >= 2 jam dari slot sebelumnya, snap ke best_hours.
+        import hashlib
+        from datetime import timedelta
+        MIN_GAP = timedelta(hours=2)
+        now = datetime.now(db.WIB)
+        acct_jitter = int(hashlib.md5(handle.encode()).hexdigest(), 16) % 37  # 0-36 mnt khas akun
+        sorted_hours = sorted(set(int(h) % 24 for h in hours)) or [9]
+
+        # mulai dari: paling lambat antara `now` dan (slot auto terakhir + 4 jam)
+        # biar isian baru nyambung di belakang antrian yg udah ada, gak numpuk.
+        prev_slot = db.last_auto_slot(handle)
+        cursor = now if prev_slot is None else max(now, prev_slot + MIN_GAP)
+
+        def _next_slot(after_dt):
+            """Jam best_hours paling awal yg > after_dt. Cari di hari after_dt dulu,
+            kalau semua jam udah lewat lanjut ke hari-hari berikut."""
+            for day_off in range(0, 8):
+                base = (after_dt + timedelta(days=day_off))
+                for hr in sorted_hours:
+                    cand = base.replace(hour=hr, minute=random.randint(0, 59),
+                                        second=0, microsecond=0)
+                    cand = cand + timedelta(minutes=acct_jitter)
+                    if cand > after_dt:
+                        return cand
+            # fallback mustahil-kejadian: 4 jam dari after_dt
+            return after_dt + MIN_GAP
+
         made = 0
         for i in range(need):
             niche = random.choice(niches)
@@ -135,25 +165,10 @@ def _plan_autopost(only_handle=None):
             _first = " ".join(_first.split())[:160]
             if _first:
                 avoid.insert(0, _first)
-            # jadwal anti-pola: tiap akun punya jitter sendiri (deterministik dari handle)
-            # biar 50 akun gak numpuk di jam sama walau best_hours mirip.
-            import hashlib
-            acct_jitter = int(hashlib.md5(handle.encode()).hexdigest(), 16) % 37  # 0-36 menit offset khas akun
-            now = datetime.now(db.WIB)
-            from datetime import timedelta
-            slot = None
-            for hr in sorted(hours):
-                cand = now.replace(hour=hr, minute=random.randint(0, 59),
-                                   second=0, microsecond=0)
-                if cand > now:
-                    slot = cand
-                    break
-            if slot is None:  # semua jam hari ini lewat -> besok jam pertama
-                hr = sorted(hours)[0]
-                slot = (now + timedelta(days=1)).replace(
-                    hour=hr, minute=random.randint(0, 59), second=0, microsecond=0)
-            # offset khas-akun + spread acak tiap post -> jam tiap akun beda-beda
-            slot = slot + timedelta(minutes=acct_jitter + random.randint(0, 25))
+            # slot: jam best_hours berikut yg >= cursor (cursor udah dijamin >= 4 jam
+            # dari slot sebelumnya), lalu majuin cursor ke slot+4jam buat post berikut.
+            slot = _next_slot(cursor)
+            cursor = slot + MIN_GAP
             db.new_post(handle, text, scheduled_at=slot.isoformat(), source="auto")
             made += 1
             print(f"[autopost] @{handle} +1 '{niche}' hook={hk.get('name')} "

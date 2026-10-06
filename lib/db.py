@@ -216,6 +216,29 @@ def recent_auto_texts(handle, limit=12):
     return out
 
 
+def last_auto_slot(handle):
+    """Datetime slot AUTO 'scheduled' paling jauh ke depan buat handle ini
+    (None kalau belum ada). Dipakai scheduler biar post baru nyambung di
+    BELAKANG antrian yg udah ada, bukan numpuk di jam sama."""
+    con = connect()
+    rows = con.execute(
+        "SELECT scheduled_at FROM posts WHERE handle=? AND source='auto' "
+        "AND status='scheduled' AND scheduled_at IS NOT NULL", (handle,)
+    ).fetchall()
+    con.close()
+    latest = None
+    for r in rows:
+        try:
+            dt = datetime.fromisoformat(r["scheduled_at"])
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=WIB)
+            if latest is None or dt > latest:
+                latest = dt
+        except Exception:
+            continue
+    return latest
+
+
 # ── media ───────────────────────────────────────────────────────────────
 def add_media(post_id, part_index, r2_key, public_url, filename=None, size=None):
     con = connect()
