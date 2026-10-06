@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ai.py — generate thread pakai AI (9Router lokal :20128, OpenAI-compatible).
+"""ai.py — generate thread pakai AI (LLM OpenAI-compatible, endpoint dari .env).
 Fitur:
   - learn_style_from_urls: fetch post dari link Threads → AI simpulin gaya nulis
   - generate: bikin thread dari topik + persona (niru gaya)
@@ -25,7 +25,7 @@ def _load_env():
 
 _load_env()
 
-AI_BASE = os.environ.get("AI_BASE_URL", "http://localhost:20128/v1").rstrip("/")
+AI_BASE = os.environ.get("AI_BASE_URL", "http://localhost:8000/v1").rstrip("/")
 AI_KEY = os.environ.get("AI_API_KEY", "")
 AI_MODEL = os.environ.get("AI_MODEL", "cc/claude-sonnet-5")
 
@@ -137,6 +137,7 @@ def softsell_reply_text(product_desc, link="", lang="id"):
         "nawarin produk secara halus, muncul SETELAH thread story (bukan hard-sell).\n"
         "ATURAN:\n"
         f"- {lang_rule}\n"
+        "- WAJIB pakai kata ganti 'aku/kita/kamu'. JANGAN 'gue/lo' (itu ketara beda persona).\n"
         "- JANGAN pakai em-dash. Pakai koma/titik.\n"
         "- Nyambung natural dari cerita, bukan iklan kaku.\n"
         "- Sebut manfaat/hasil, bukan fitur teknis doang.\n"

@@ -4,7 +4,7 @@
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- Akun Threads (multi-account: @promptedsite, @denkaayifitrii, dst)
+-- Akun Threads (multi-account)
 CREATE TABLE IF NOT EXISTS accounts (
     handle       TEXT PRIMARY KEY,          -- username tanpa @
     display_name TEXT,

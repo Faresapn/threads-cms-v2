@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """r2.py — uploader ke Cloudflare R2 (S3-compatible) buat Threads CMS v2.
 
-Baca credential dari ~/threads-cms-v2/.env
-Bucket: media (shared sama PromptedSite), prefix threads/ biar kepisah.
-Public URL lewat CDN: https://cdn.promptedsite.com/threads/<key>
+Baca credential dari .env (lihat .env.example).
+Bucket, prefix, dan CDN URL semua diatur lewat environment variable.
+Public URL = <R2_CDN_URL>/<R2_PREFIX>/<key>
 """
 import os, uuid, mimetypes
 from typing import Optional
@@ -33,8 +33,8 @@ _load_env()
 ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
 ACCESS_KEY = os.environ.get("R2_ACCESS_KEY_ID", "")
 SECRET_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
-BUCKET = os.environ.get("R2_MEDIA_BUCKET", "media")
-CDN_URL = os.environ.get("R2_CDN_URL", "https://cdn.promptedsite.com").rstrip("/")
+BUCKET = os.environ.get("R2_MEDIA_BUCKET", "")
+CDN_URL = os.environ.get("R2_CDN_URL", "").rstrip("/")
 PREFIX = os.environ.get("R2_PREFIX", "threads")
 
 ENDPOINT = f"https://{ACCOUNT_ID}.r2.cloudflarestorage.com"
